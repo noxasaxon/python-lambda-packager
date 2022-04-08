@@ -1,42 +1,16 @@
-// import { Delays, greeter } from '../src/main';
+import * as path from 'path';
+import { makePackages, defaultPackagingArgs } from '../lib/index';
 
-// describe('greeter function', () => {
-//   const name = 'John';
-//   let hello: string;
+const MOCK_REPO_PATH = path.join(__dirname, './mock_repo');
 
-//   let timeoutSpy: jest.SpyInstance;
+describe('makePackages', () => {
+  it('should be run', async () => {
+    const pkgArgs = defaultPackagingArgs;
+    pkgArgs.functionsDir = path.join(MOCK_REPO_PATH, 'functions');
 
-//   // Act before assertions
-//   beforeAll(async () => {
-//     // Read more about fake timers
-//     // http://facebook.github.io/jest/docs/en/timer-mocks.html#content
-//     // Jest 27 now uses "modern" implementation of fake timers
-//     // https://jestjs.io/blog/2021/05/25/jest-27#flipping-defaults
-//     // https://github.com/facebook/jest/pull/5171
-//     jest.useFakeTimers();
-//     timeoutSpy = jest.spyOn(global, 'setTimeout');
+    // run function
+    await makePackages(pkgArgs);
 
-//     const p: Promise<string> = greeter(name);
-//     jest.runOnlyPendingTimers();
-//     hello = await p;
-//   });
-
-//   // Teardown (cleanup) after assertions
-//   afterAll(() => {
-//     timeoutSpy.mockRestore();
-//   });
-
-//   // Assert if setTimeout was called properly
-//   it('delays the greeting by 2 seconds', () => {
-//     expect(setTimeout).toHaveBeenCalledTimes(1);
-//     expect(setTimeout).toHaveBeenLastCalledWith(
-//       expect.any(Function),
-//       Delays.Long,
-//     );
-//   });
-
-//   // Assert greeter result
-//   it('greets a user with `Hello, {name}` message', () => {
-//     expect(hello).toBe(`Hello, ${name}`);
-//   });
-// });
+    expect('test').toBe('test');
+  });
+});

@@ -2,14 +2,14 @@ import {
   command,
   run,
   string,
-  number,
+  // number,
   positional,
   option,
   optional,
 } from 'cmd-ts';
 import { ArgParser } from 'cmd-ts/dist/cjs/argparser';
 import { ProvidesHelp } from 'cmd-ts/dist/cjs/helpdoc';
-import { PackagingArgs, useDockerOptions } from '../lib';
+import { PackagingArgs, useDockerOptions, makePackages } from '../lib/index.js';
 
 type GenericCmdArgs<T> = {
   [P in keyof Required<T>]: ArgParser<any> & Partial<ProvidesHelp>;
@@ -28,11 +28,19 @@ const PackagingCmdArgs: GenericCmdArgs<PackagingArgs> = {
   outputDir: option({
     type: optional(string),
     long: 'output',
+    short: 'u',
     description: 'output directory for archive files',
   }),
   useDocker: option({
     type: optional(string),
     long: 'useDocker',
+    short: 'u',
+    description: 'functions directory',
+  }),
+  language: option({
+    type: optional(string),
+    long: 'language',
+    short: 'l',
     description: 'functions directory',
   }),
 };
@@ -69,6 +77,8 @@ const myCmd = command({
     allArgNames.forEach((argName) => {
       console.log(argName, args[argName]);
     });
+
+    makePackages(args);
     // console.log(args);
 
     // console.log(args.functionsDir);
