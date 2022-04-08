@@ -1,5 +1,6 @@
-import * as fs from 'fs-extra';
 import { Result, ok, err } from 'neverthrow';
+import { ensureDirSync } from './utils';
+import { existsSync, readdirSync } from 'fs';
 
 export type useDockerOptions = 'no-linux' | 'true' | 'false';
 export type languageOptions = 'python' | 'ts' | 'js';
@@ -21,8 +22,8 @@ export const defaultPackagingArgs: PackagingArgs = {
 };
 
 function checkDirExists(dir: string): Result<string, string> {
-  console.log('fs', fs);
-  if (!fs.existsSync(dir)) {
+  console.log('fs');
+  if (!existsSync(dir)) {
     return err(`${dir} does not exist`);
   }
   return ok(dir);
@@ -54,7 +55,7 @@ export async function makePackages({
   }
 
   // get list of directories in the functions directory
-  const functionDirs = fs.readdirSync(functionsDir, { withFileTypes: true });
+  const functionDirs = readdirSync(functionsDir, { withFileTypes: true });
   const functionDirsNames = functionDirs.filter((dir) => dir.isDirectory());
   console.log('fnDirNames', functionDirsNames);
 

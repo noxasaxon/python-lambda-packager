@@ -38,7 +38,6 @@
   "dependencies": {
     "cmd-ts": "~0.10.1",
     "eslint-plugin-neverthrow": "^1.1.4",
-    "fs-extra": "^10.0.1",
     "neverthrow": "^4.3.1",
     "tslib": "~2.3.1"
   },
