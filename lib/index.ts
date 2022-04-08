@@ -1,6 +1,10 @@
 import { Result, ok, err } from 'neverthrow';
 import { ensureDirSync } from './utils';
 import { existsSync, readdirSync } from 'fs';
+import {
+  DEFAULT_FUNCTIONS_DIR_NAME,
+  DEFAULT_OUTPUT_DIR_NAME,
+} from './constants';
 
 export type useDockerOptions = 'no-linux' | 'true' | 'false';
 export type languageOptions = 'python' | 'ts' | 'js';
@@ -8,34 +12,34 @@ export type languageOptions = 'python' | 'ts' | 'js';
 export interface PackagingArgs {
   functionsDir: string;
   commonDir?: string;
-  outputDir: string;
+  outputDir?: string;
   useDocker: useDockerOptions;
   language: languageOptions;
 }
 
 export const defaultPackagingArgs: PackagingArgs = {
-  functionsDir: './functions',
+  functionsDir: DEFAULT_FUNCTIONS_DIR_NAME,
+  outputDir: DEFAULT_OUTPUT_DIR_NAME,
+  // no common files directory by default
   commonDir: undefined,
-  outputDir: './archives',
   useDocker: 'no-linux',
   language: 'python',
 };
 
 function checkDirExists(dir: string): Result<string, string> {
-  console.log('fs');
   if (!existsSync(dir)) {
     return err(`${dir} does not exist`);
   }
   return ok(dir);
 }
 
-export async function makePackages({
-  functionsDir,
-  commonDir,
-  outputDir,
-  useDocker,
-  language,
-}: PackagingArgs) {
+export async function makePackages(args: PackagingArgs) {
+  // use default args if not provided
+  const { functionsDir, commonDir, outputDir, useDocker, language } = {
+    ...defaultPackagingArgs,
+    ...args,
+  };
+
   // error check the args
   const functionsDirResult = checkDirExists(functionsDir);
   if (functionsDirResult.isErr()) {
@@ -53,11 +57,16 @@ export async function makePackages({
       return;
     }
   }
+  if (language !== 'python') {
+    console.error(`Unsupported language: ${language}`);
+  }
 
-  // get list of directories in the functions directory
+  // get list of directories in the specified functions folder
   const functionDirs = readdirSync(functionsDir, { withFileTypes: true });
   const functionDirsNames = functionDirs.filter((dir) => dir.isDirectory());
   console.log('fnDirNames', functionDirsNames);
+
+  ensureDirSync(outputDir);
 
   // functionDirs.forEach((functionDir) => {
   //   // get the path to the function directory
