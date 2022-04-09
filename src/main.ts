@@ -45,27 +45,6 @@ const PackagingCmdArgs: GenericCmdArgs<PackagingArgs> = {
   }),
 };
 
-declare type PackagerCmdArgs = Record<
-  string,
-  ArgParser<any> & Partial<ProvidesHelp>
->;
-
-// declare type PackagerCmdArgs = Record<
-//   string,
-//   ArgParser<any> & Partial<ProvidesHelp>
-// >;
-
-// function buildCliArgs() {
-//   // instantiate this type here to ensure we cover all use cases
-//   // const tests =  [keyof PackagingArgs] as const;
-//   const defaultArgs: PackagingArgs = {
-//     functionsDir: 'functions',
-//     commonDir: 'common',
-//     outputDir: 'dist',
-//     useDocker: 'no-linux',
-//   };
-// }
-
 // get input using cmd-ts
 const myCmd = command({
   name: 'lambda-packager',

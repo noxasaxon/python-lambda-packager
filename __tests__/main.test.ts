@@ -1,6 +1,11 @@
 import * as path from 'path';
-import { DEFAULT_FUNCTIONS_DIR_NAME } from '../lib/constants';
-import { makePackages, defaultPackagingArgs } from '../lib/index';
+import {
+  DEFAULT_FUNCTIONS_DIR_NAME,
+  makePackages,
+  defaultPackagingArgs,
+} from '../lib/internal';
+
+const TESTING_ARTIFACTS_PATH = path.join(__dirname, './.testing_artifacts');
 
 const MOCK_REPO_PATH = path.join(__dirname, './mock_repo');
 
@@ -11,6 +16,8 @@ describe('makePackages', () => {
       MOCK_REPO_PATH,
       DEFAULT_FUNCTIONS_DIR_NAME,
     );
+    pkgArgs.commonDir = path.join(MOCK_REPO_PATH, 'common');
+    pkgArgs.outputDir = path.join(TESTING_ARTIFACTS_PATH, '.archives');
 
     // run function
     await makePackages(pkgArgs);
