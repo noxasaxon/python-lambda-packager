@@ -119,6 +119,48 @@ export async function makePackages(args: PackagingArgs) {
 
     // copy the common code to the archive directory
     if (commonDir !== undefined) {
+      // get common reguirements file
+      const commonRequirementsFilePath = getRequirementsFilePath(
+        commonDir,
+        language,
+      );
+      const commonRequirementsFileContents = getUTF8File(
+        commonRequirementsFilePath,
+      );
+      if (commonRequirementsFileContents.isErr()) {
+        console.error(
+          `Error reading common requirements file: ${commonRequirementsFilePath}`,
+        );
+        throw new Error(commonRequirementsFileContents.error);
+      }
+
+      // get function requirements file from archive dir
+      const functionRequirementsFilePath = getRequirementsFilePath(
+        moduleArchiveDirPath,
+        language,
+      );
+      const functionRequirementsFileContents = getUTF8File(
+        functionRequirementsFilePath,
+      );
+      if (functionRequirementsFileContents.isErr()) {
+        console.error(
+          `Error reading function requirements file: ${functionRequirementsFilePath}`,
+        );
+        throw new Error(functionRequirementsFileContents.error);
+      }
+
+      // append common requirements to function requirements
+      const functionRequirementsFileContentsWithCommon = `${commonRequirementsFileContents.value}\n${functionRequirementsFileContents.value}`;
+
+      // write the combined requirements file to the archive dir
+      ensureDirSync(moduleArchiveDirPath);
+      writeFileSync(
+        functionRequirementsFilePath,
+        functionRequirementsFileContentsWithCommon,
+        'utf8',
+      );
+    }
+    
       // customCopyDirSync(commonDir, moduleArchiveDirPath);
     }
 
