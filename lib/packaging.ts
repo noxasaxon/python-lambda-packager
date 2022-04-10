@@ -1,11 +1,19 @@
 import { Result, ok, err } from 'neverthrow';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'fs';
 import {
   customCopyDirSync,
   ensureDirSync,
   DEFAULT_FUNCTIONS_DIR_NAME,
   DEFAULT_OUTPUT_DIR_NAME,
 } from './internal.js';
+import { exec } from 'child_process';
 
 export type useDockerOptions = 'no-linux' | 'true' | 'false';
 export type languageOptions = 'python' | 'ts' | 'js';
@@ -119,7 +127,7 @@ export async function makePackages(args: PackagingArgs) {
 
     // copy the common code to the archive directory
     if (commonDir !== undefined) {
-      // get common reguirements file
+      // get common reguirements file path
       const commonRequirementsFilePath = getRequirementsFilePath(
         commonDir,
         language,
@@ -128,60 +136,57 @@ export async function makePackages(args: PackagingArgs) {
         commonRequirementsFilePath,
       );
       if (commonRequirementsFileContents.isErr()) {
-        console.error(
-          `Error reading common requirements file: ${commonRequirementsFilePath}`,
+        throw new Error(
+          `Error reading common requirements file: ${commonRequirementsFileContents.error}`,
         );
-        throw new Error(commonRequirementsFileContents.error);
       }
 
-      // get function requirements file from archive dir
+      // get function requirements file path
       const functionRequirementsFilePath = getRequirementsFilePath(
-        moduleArchiveDirPath,
+        moduleCodeDirPath,
         language,
       );
       const functionRequirementsFileContents = getUTF8File(
         functionRequirementsFilePath,
       );
       if (functionRequirementsFileContents.isErr()) {
-        console.error(
-          `Error reading function requirements file: ${functionRequirementsFilePath}`,
+        throw new Error(
+          `Error reading function requirements file: ${functionRequirementsFileContents.error}`,
         );
-        throw new Error(functionRequirementsFileContents.error);
       }
 
-      // append common requirements to function requirements
-      const functionRequirementsFileContentsWithCommon = `${commonRequirementsFileContents.value}\n${functionRequirementsFileContents.value}`;
+      // get the common requirements file contents
+      const commonRequirementsFileContentsString =
+        commonRequirementsFileContents.value;
 
-      // write the combined requirements file to the archive dir
-      ensureDirSync(moduleArchiveDirPath);
+      // get the function requirements file contents
+      const functionRequirementsFileContentsString =
+        functionRequirementsFileContents.value;
+
+      // combine the requirements files
+      const combinedRequirementsFileContentsString = `${commonRequirementsFileContentsString}\n${functionRequirementsFileContentsString}`;
+
+      // write the combined requirements file
+      const combinedRequirementsFilePath = `${moduleArchiveDirPath}/requirements.txt`;
+
       writeFileSync(
-        functionRequirementsFilePath,
-        functionRequirementsFileContentsWithCommon,
-        'utf8',
+        combinedRequirementsFilePath,
+        combinedRequirementsFileContentsString,
+        { encoding: 'utf8', flag: 'w' },
       );
-    }
-    
-      // customCopyDirSync(commonDir, moduleArchiveDirPath);
-    }
 
-    // get the path to the common code
-    const commonCodePath =
-      commonDir === undefined ? undefined : `${commonDir}/common.${language}`;
-    // get the path to the archive code
-    const archiveCodePath = `${moduleArchiveDirPath}/function.${language}`;
-    // copy the function code to the archive directory
-    // copySync(functionCodePath, archiveCodePath);
-    // if there is common code, copy it to the archive directory
-    // if (commonCodePath !== undefined) {
-    //   fs.copySync(commonCodePath, archiveCodePath);
-    // }
+      // copy the common code to the archive directory
+      customCopyDirSync(commonDir, moduleArchiveDirPath);
+
+      // install the requirements without docker
+      const installRequirements = `pip install -r ${moduleArchiveDirPath}/requirements.txt`;
+      const installRequirementsResult = exec(installRequirements);
+      installRequirementsResult.stdout.on('data', (data) => {
+        console.log(`${data}`);
+      });
+      installRequirementsResult.stderr.on('data', (data) => {
+        console.error(`${data}`);
+      });
+    }
   });
-  // // if the useDocker flag is set to true, copy the dockerfile to the archive directory
-  // if (useDocker === 'true') {
-  //   fs.copySync(
-  //     `${functionDirPath}/Dockerfile`,
-  //     `${archiveDirPath}/Dockerfile`,
-  //   );
-  // }
-  // });
 }
