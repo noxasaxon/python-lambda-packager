@@ -6,6 +6,9 @@
   "type": "module",
   "main": "./build/index.js",
   "module": "./build/index.js",
+  "files": [
+    "build/"
+  ],
   "engines": {
     "node": ">= 16.13 <17"
   },
