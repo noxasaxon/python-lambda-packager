@@ -9,7 +9,12 @@ import {
 } from 'cmd-ts';
 import { ArgParser } from 'cmd-ts/dist/cjs/argparser';
 import { ProvidesHelp } from 'cmd-ts/dist/cjs/helpdoc';
-import { PackagingArgs, useDockerOptions, makePackages } from '../lib/index.js';
+import {
+  PackagingArgs,
+  useDockerOptions,
+  makePackages,
+  defaultPackagingArgs,
+} from '../lib/index.js';
 
 type GenericCmdArgs<T> = {
   [P in keyof Required<T>]: ArgParser<any> & Partial<ProvidesHelp>;
@@ -38,7 +43,12 @@ const PackagingCmdArgs: GenericCmdArgs<PackagingArgs> = {
     description: 'functions directory',
   }),
   language: option({
-    type: optional(string),
+    type: {
+      ...string,
+      defaultValue: () => defaultPackagingArgs.language,
+      defaultValueIsSerializable: true,
+    },
+
     long: 'language',
     short: 'l',
     description: 'functions directory',
