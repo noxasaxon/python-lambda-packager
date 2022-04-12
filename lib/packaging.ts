@@ -188,32 +188,34 @@ export async function makePackages(args: PackagingArgs) {
 
     // combine the requirements files
     const combinedRequirementsFileContentsString = `${commonRequirementsContents}\n${fnRequirementsContents}`;
-
-    // write the combined requirements file
     const combinedRequirementsFilePath = `${moduleArchiveDirPath}/requirements.txt`;
+    console.log(combinedRequirementsFileContentsString);
 
+    // copy the common code to the archive directory
+    customCopyDirSync(commonDir, moduleArchiveDirPath);
+
+    // write the combined requirements file over the existing one
     writeFileSync(
       combinedRequirementsFilePath,
       combinedRequirementsFileContentsString,
       { encoding: 'utf8', flag: 'w' },
     );
 
-    // copy the common code to the archive directory
-    customCopyDirSync(commonDir, moduleArchiveDirPath);
-
     // install the requirements using spawn without docker
     const childProcessInstallReqs = spawn('pip', [
       'install',
       '-r',
       moduleArchiveDirPath + '/requirements.txt',
+      '-t',
+      moduleArchiveDirPath,
     ]);
 
-    childProcessInstallReqs.stdout.on('data', (data) => {
-      console.log(`${data}`);
-    });
-    childProcessInstallReqs.stderr.on('data', (data) => {
-      console.error(`${data}`);
-    });
+    // childProcessInstallReqs.stdout.on('data', (data) => {
+    //   console.log(`${data}`);
+    // });
+    // childProcessInstallReqs.stderr.on('data', (data) => {
+    //   console.error(`${data}`);
+    // });
 
     const exitCode = await new Promise((resolve, reject) => {
       childProcessInstallReqs.on('close', resolve);
