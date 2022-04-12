@@ -13,7 +13,7 @@ import {
   DEFAULT_FUNCTIONS_DIR_NAME,
   DEFAULT_OUTPUT_DIR_NAME,
 } from './internal.js';
-import { exec, spawn } from 'child_process';
+import { spawn } from 'child_process';
 
 export type useDockerOptions = 'no-linux' | 'true' | 'false';
 export type languageOptions = 'python' | 'ts' | 'js';

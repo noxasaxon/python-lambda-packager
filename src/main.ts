@@ -31,16 +31,24 @@ const PackagingCmdArgs: GenericCmdArgs<PackagingArgs> = {
     description: 'common shared code directory path',
   }),
   outputDir: option({
-    type: optional(string),
+    type: {
+      ...string,
+      defaultValue: () => defaultPackagingArgs.outputDir,
+      defaultValueIsSerializable: true,
+    },
     long: 'output',
     short: 'u',
     description: 'output directory for archive files',
   }),
   useDocker: option({
-    type: optional(string),
+    type: {
+      ...string,
+      defaultValue: () => defaultPackagingArgs.useDocker,
+      defaultValueIsSerializable: true,
+    },
     long: 'useDocker',
     short: 'u',
-    description: 'functions directory',
+    description: "'no-linux' or 'true' or 'false'",
   }),
   language: option({
     type: {
@@ -51,7 +59,7 @@ const PackagingCmdArgs: GenericCmdArgs<PackagingArgs> = {
 
     long: 'language',
     short: 'l',
-    description: 'functions directory',
+    description: 'programming language of the code to package',
   }),
 };
 
