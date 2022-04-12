@@ -4,6 +4,8 @@
   "description": "Minimalistic boilerplate to quick-start Node.js development in TypeScript.",
   "author": "Saxon Hunt <noxasaxon@users.noreply.github.com>",
   "type": "module",
+  "main": "./build/index.js",
+  "module": "./build/index.js",
   "engines": {
     "node": ">= 16.13 <17"
   },
