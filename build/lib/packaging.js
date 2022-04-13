@@ -45,10 +45,21 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
 import { ok, err } from 'neverthrow';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, } from 'fs';
-import { customCopyDirSync, ensureDirSync, DEFAULT_FUNCTIONS_DIR_NAME, DEFAULT_OUTPUT_DIR_NAME, } from './internal.js';
+import { mkdirSync, readdirSync, rmSync, writeFileSync, } from 'fs';
+import { customCopyDirSync, ensureDirSync, DEFAULT_FUNCTIONS_DIR_NAME, DEFAULT_OUTPUT_DIR_NAME, checkDirExists, getUTF8File, removeUndefinedValues, } from './internal.js';
 import { spawn } from 'child_process';
+import { DEFAULT_DOCKER_IMAGE } from './constants.js';
+import { spawnDockerCmd } from './docker.js';
 export var defaultPackagingArgs = {
     functionsDir: DEFAULT_FUNCTIONS_DIR_NAME,
     outputDir: DEFAULT_OUTPUT_DIR_NAME,
@@ -57,6 +68,16 @@ export var defaultPackagingArgs = {
     useDocker: 'no-linux',
     language: 'python'
 };
+function shouldUseDocker(useDockerChoice) {
+    switch (useDockerChoice) {
+        case 'true':
+            return true;
+        case 'false':
+            return false;
+        case 'no-linux':
+            return process.platform !== 'linux';
+    }
+}
 // does not handle non-pip installations (poetry, etc)
 function getRequirementsFilePath(functionDirPath, language) {
     switch (language) {
@@ -69,19 +90,6 @@ function getRequirementsFilePath(functionDirPath, language) {
         default:
             throw new Error("Unsupported language: ".concat(language));
     }
-}
-function getUTF8File(filePath) {
-    if (!existsSync(filePath)) {
-        return err("File not found: ".concat(filePath));
-    }
-    var fileContents = readFileSync(filePath, 'utf8');
-    return ok(fileContents);
-}
-function checkDirExists(dir) {
-    if (!existsSync(dir)) {
-        return err("".concat(dir, " does not exist"));
-    }
-    return ok(dir);
 }
 function checkArgErrors(args) {
     // error check the args
@@ -100,31 +108,17 @@ function checkArgErrors(args) {
     }
     return ok('');
 }
-function removeUndefinedValues(obj) {
-    // Object.keys(args).forEach(
-    //   (key) => args[key] === undefined && delete args[key],
-    // );
-    var newObj = {};
-    Object.keys(obj).forEach(function (key) {
-        if (obj[key] !== undefined) {
-            newObj[key] = obj[key];
-        }
-    });
-    return newObj;
-}
 export function makePackages(args) {
     return __awaiter(this, void 0, void 0, function () {
-        var argsWithDefaults, errors, functionsDir, commonDir, outputDir, useDocker, language, functionDirs, commonRequirementsContents, commonRequirementsFilePath, commonRequirementsFileContents, _loop_1, _i, functionDirs_1, functionDir;
+        var argsPlusDefaults, errors, functionsDir, commonDir, outputDir, useDocker, language, functionDirs, commonRequirementsContents, commonRequirementsFilePath, commonRequirementsFileContents, _loop_1, _i, functionDirs_1, functionDir;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    argsWithDefaults = __assign(__assign({}, defaultPackagingArgs), removeUndefinedValues(args));
-                    errors = checkArgErrors(argsWithDefaults);
-                    if (errors.isErr()) {
-                        console.error(errors.error);
+                    argsPlusDefaults = __assign(__assign({}, defaultPackagingArgs), removeUndefinedValues(args));
+                    errors = checkArgErrors(argsPlusDefaults);
+                    if (errors.isErr())
                         throw new Error(errors.error);
-                    }
-                    functionsDir = argsWithDefaults.functionsDir, commonDir = argsWithDefaults.commonDir, outputDir = argsWithDefaults.outputDir, useDocker = argsWithDefaults.useDocker, language = argsWithDefaults.language;
+                    functionsDir = argsPlusDefaults.functionsDir, commonDir = argsPlusDefaults.commonDir, outputDir = argsPlusDefaults.outputDir, useDocker = argsPlusDefaults.useDocker, language = argsPlusDefaults.language;
                     functionDirs = readdirSync(functionsDir, {
                         withFileTypes: true
                     }).filter(function (dir) { return dir.isDirectory(); });
@@ -143,7 +137,7 @@ export function makePackages(args) {
                         }
                     }
                     _loop_1 = function (functionDir) {
-                        var moduleName, moduleCodeDirPath, moduleArchiveDirPath, functionRequirementsFilePath, fnRequirementsContents, fnRequirementsQuery, combinedRequirementsFileContentsString, combinedRequirementsFilePath, childProcessInstallReqs, exitCode;
+                        var moduleName, moduleCodeDirPath, moduleArchiveDirPath, functionRequirementsFilePath, fnRequirementsContents, fnRequirementsQuery, combinedRequirementsFileContentsString, combinedRequirementsFilePath, childProcessInstallReqs, pipDockerCmds, dockerCmds, exitCode;
                         return __generator(this, function (_b) {
                             switch (_b.label) {
                                 case 0:
@@ -171,6 +165,39 @@ export function makePackages(args) {
                                     customCopyDirSync(commonDir, moduleArchiveDirPath);
                                     // write the combined requirements file over the existing one
                                     writeFileSync(combinedRequirementsFilePath, combinedRequirementsFileContentsString, { encoding: 'utf8', flag: 'w' });
+                                    if (!shouldUseDocker(useDocker)) return [3 /*break*/, 2];
+                                    pipDockerCmds = [
+                                        'python',
+                                        '-m',
+                                        'pip',
+                                        'install',
+                                        '-t',
+                                        '/var/task/',
+                                        '-r',
+                                        '/var/task/requirements.txt',
+                                    ];
+                                    dockerCmds = __spreadArray([
+                                        // 'docker',
+                                        'run',
+                                        '--rm',
+                                        '-v',
+                                        // `${bindPath}:/var/task:z`,
+                                        "".concat(moduleArchiveDirPath, ":/var/task:z"),
+                                        DEFAULT_DOCKER_IMAGE
+                                    ], pipDockerCmds, true);
+                                    return [4 /*yield*/, spawnDockerCmd(dockerCmds)];
+                                case 1:
+                                    // childProcessInstallReqs = spawn('pip', [
+                                    //   'install',
+                                    //   '-r',
+                                    //   moduleArchiveDirPath + '/requirements.txt',
+                                    //   '-t',
+                                    //   moduleArchiveDirPath,
+                                    // ]);
+                                    childProcessInstallReqs = _b.sent();
+                                    return [3 /*break*/, 3];
+                                case 2:
+                                    // not using docker
                                     childProcessInstallReqs = spawn('pip', [
                                         'install',
                                         '-r',
@@ -178,10 +205,28 @@ export function makePackages(args) {
                                         '-t',
                                         moduleArchiveDirPath,
                                     ]);
+                                    _b.label = 3;
+                                case 3:
+                                    // install the requirements using spawn without docker
+                                    childProcessInstallReqs.stdout.on('data', function (data) {
+                                        console.log("".concat(data));
+                                    });
+                                    childProcessInstallReqs.stderr.on('data', function (data) {
+                                        if (data.toString().includes('command not found')) {
+                                            throw new Error('docker not found! Please install it.');
+                                        }
+                                        else if (data.toString().includes('Cannot connect to the Docker daemon')) {
+                                            throw new Error('Docker daemon not running! Please start it.');
+                                        }
+                                        else {
+                                            console.error("".concat(data));
+                                            throw new Error(data);
+                                        }
+                                    });
                                     return [4 /*yield*/, new Promise(function (resolve, reject) {
                                             childProcessInstallReqs.on('close', resolve);
                                         })];
-                                case 1:
+                                case 4:
                                     exitCode = _b.sent();
                                     if (exitCode) {
                                         throw new Error("subprocess error exit ".concat(exitCode));

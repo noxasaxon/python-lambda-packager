@@ -12,18 +12,24 @@ import {
   ensureDirSync,
   DEFAULT_FUNCTIONS_DIR_NAME,
   DEFAULT_OUTPUT_DIR_NAME,
+  checkDirExists,
+  getUTF8File,
+  removeUndefinedValues,
+  buildImage,
 } from './internal.js';
 import { spawn } from 'child_process';
+import { DEFAULT_DOCKER_IMAGE } from './constants.js';
+import { spawnDockerCmd } from './docker.js';
 
-export type useDockerOptions = 'no-linux' | 'true' | 'false';
-export type languageOptions = 'python' | 'ts' | 'js';
+export type useDockerOption = 'no-linux' | 'true' | 'false';
+export type languageOption = 'python' | 'ts' | 'js';
 
 export interface PackagingArgs {
   functionsDir: string;
   commonDir?: string;
   outputDir?: string;
-  useDocker: useDockerOptions;
-  language: languageOptions;
+  useDocker: useDockerOption;
+  language: languageOption;
 }
 
 export const defaultPackagingArgs: PackagingArgs = {
@@ -35,10 +41,21 @@ export const defaultPackagingArgs: PackagingArgs = {
   language: 'python',
 };
 
+function shouldUseDocker(useDockerChoice: useDockerOption): boolean {
+  switch (useDockerChoice) {
+    case 'true':
+      return true;
+    case 'false':
+      return false;
+    case 'no-linux':
+      return process.platform !== 'linux';
+  }
+}
+
 // does not handle non-pip installations (poetry, etc)
 function getRequirementsFilePath(
   functionDirPath: string,
-  language: languageOptions,
+  language: languageOption,
 ): string {
   switch (language) {
     case 'python':
@@ -50,23 +67,6 @@ function getRequirementsFilePath(
     default:
       throw new Error(`Unsupported language: ${language}`);
   }
-}
-
-function getUTF8File(filePath: string): Result<string, string> {
-  if (!existsSync(filePath)) {
-    return err(`File not found: ${filePath}`);
-  }
-
-  const fileContents = readFileSync(filePath, 'utf8');
-
-  return ok(fileContents);
-}
-
-function checkDirExists(dir: string): Result<string, string> {
-  if (!existsSync(dir)) {
-    return err(`${dir} does not exist`);
-  }
-  return ok(dir);
 }
 
 function checkArgErrors(args: PackagingArgs): Result<string, string> {
@@ -92,37 +92,19 @@ function checkArgErrors(args: PackagingArgs): Result<string, string> {
   return ok('');
 }
 
-function removeUndefinedValues<T>(obj: T): T {
-  // Object.keys(args).forEach(
-  //   (key) => args[key] === undefined && delete args[key],
-  // );
-  const newObj = {};
-  Object.keys(obj).forEach((key) => {
-    if (obj[key] !== undefined) {
-      newObj[key] = obj[key];
-    }
-  });
-
-  return newObj as T;
-}
-
 export async function makePackages(args: PackagingArgs) {
   // use default args if not provided
-  const argsWithDefaults = {
+  const argsPlusDefaults = {
     ...defaultPackagingArgs,
-
     ...removeUndefinedValues(args),
   };
 
   // error check the args
-  const errors = checkArgErrors(argsWithDefaults);
-  if (errors.isErr()) {
-    console.error(errors.error);
-    throw new Error(errors.error);
-  }
+  const errors = checkArgErrors(argsPlusDefaults);
+  if (errors.isErr()) throw new Error(errors.error);
 
   const { functionsDir, commonDir, outputDir, useDocker, language } =
-    argsWithDefaults;
+    argsPlusDefaults;
 
   // get list of directories in the specified functions folder
   const functionDirs = readdirSync(functionsDir, {
@@ -158,7 +140,6 @@ export async function makePackages(args: PackagingArgs) {
   }
 
   for (const functionDir of functionDirs) {
-    // await functionDirs.forEach(async (functionDir) => {
     const moduleName = functionDir.name;
 
     const moduleCodeDirPath = `${functionsDir}/${moduleName}`;
@@ -201,21 +182,81 @@ export async function makePackages(args: PackagingArgs) {
       { encoding: 'utf8', flag: 'w' },
     );
 
-    // install the requirements using spawn without docker
-    const childProcessInstallReqs = spawn('pip', [
-      'install',
-      '-r',
-      moduleArchiveDirPath + '/requirements.txt',
-      '-t',
-      moduleArchiveDirPath,
-    ]);
+    let childProcessInstallReqs;
 
-    // childProcessInstallReqs.stdout.on('data', (data) => {
-    //   console.log(`${data}`);
-    // });
-    // childProcessInstallReqs.stderr.on('data', (data) => {
-    //   console.error(`${data}`);
-    // });
+    if (shouldUseDocker(useDocker)) {
+      // installation of reqs inside docker
+      const pipDockerCmds = [
+        'python',
+        '-m',
+        'pip',
+        'install',
+        '-t',
+        '/var/task/',
+        '-r',
+        '/var/task/requirements.txt',
+      ];
+
+      // if custom image
+      // buildImage(customDockerfile)
+      // const imageName = CUSTOM_IMAGE_NAME
+
+      const dockerCmds = [
+        // 'docker',
+        'run',
+        '--rm',
+        '-v',
+        // `${bindPath}:/var/task:z`,
+        `${moduleArchiveDirPath}:/var/task:z`,
+        DEFAULT_DOCKER_IMAGE,
+        ...pipDockerCmds,
+      ];
+
+      // childProcessInstallReqs = spawn('pip', [
+      //   'install',
+      //   '-r',
+      //   moduleArchiveDirPath + '/requirements.txt',
+      //   '-t',
+      //   moduleArchiveDirPath,
+      // ]);
+
+      childProcessInstallReqs = await spawnDockerCmd(dockerCmds);
+
+      // childProcessInstallReqs = spawn('pip', [
+      //   'install',
+      //   '-r',
+      //   moduleArchiveDirPath + '/requirements.txt',
+      //   '-t',
+      //   moduleArchiveDirPath,
+      // ]);
+    } else {
+      // not using docker
+      childProcessInstallReqs = spawn('pip', [
+        'install',
+        '-r',
+        moduleArchiveDirPath + '/requirements.txt',
+        '-t',
+        moduleArchiveDirPath,
+      ]);
+    }
+
+    // install the requirements using spawn without docker
+
+    childProcessInstallReqs.stdout.on('data', (data) => {
+      console.log(`${data}`);
+    });
+    childProcessInstallReqs.stderr.on('data', (data) => {
+      if (data.toString().includes('command not found')) {
+        throw new Error('docker not found! Please install it.');
+      } else if (
+        data.toString().includes('Cannot connect to the Docker daemon')
+      ) {
+        throw new Error('Docker daemon not running! Please start it.');
+      } else {
+        console.error(`${data}`);
+        throw new Error(data);
+      }
+    });
 
     const exitCode = await new Promise((resolve, reject) => {
       childProcessInstallReqs.on('close', resolve);

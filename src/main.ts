@@ -11,7 +11,7 @@ import { ArgParser } from 'cmd-ts/dist/cjs/argparser';
 import { ProvidesHelp } from 'cmd-ts/dist/cjs/helpdoc';
 import {
   PackagingArgs,
-  useDockerOptions,
+  useDockerOption,
   makePackages,
   defaultPackagingArgs,
 } from '../lib/index.js';
@@ -28,6 +28,7 @@ const PackagingCmdArgs: GenericCmdArgs<PackagingArgs> = {
   commonDir: option({
     type: optional(string),
     long: 'common',
+    short: 'c',
     description: 'common shared code directory path',
   }),
   outputDir: option({
@@ -37,13 +38,14 @@ const PackagingCmdArgs: GenericCmdArgs<PackagingArgs> = {
       defaultValueIsSerializable: true,
     },
     long: 'output',
-    short: 'u',
+    short: 'o',
     description: 'output directory for archive files',
   }),
   useDocker: option({
     type: {
       ...string,
       defaultValue: () => defaultPackagingArgs.useDocker,
+
       defaultValueIsSerializable: true,
     },
     long: 'useDocker',
@@ -69,16 +71,13 @@ const myCmd = command({
 
   args: PackagingCmdArgs,
   handler: (args) => {
-    // do stuff with args
-    const allArgNames = Object.keys(args);
-    allArgNames.forEach((argName) => {
-      console.log(argName, args[argName]);
-    });
+    if (args.useDocker === true) {
+      args.useDocker = 'true';
+    } else if (args.useDocker === false) {
+      args.useDocker = 'false';
+    }
 
     makePackages(args);
-    // console.log(args);
-
-    // console.log(args.functionsDir);
   },
 });
 

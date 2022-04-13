@@ -2,9 +2,9 @@
 // https://stackoverflow.com/a/65238884/9866589
 import {
   makePackages,
-  useDockerOptions,
+  useDockerOption,
   PackagingArgs,
   defaultPackagingArgs,
 } from './internal.js';
 
-export { makePackages, useDockerOptions, PackagingArgs, defaultPackagingArgs };
+export { makePackages, useDockerOption, PackagingArgs, defaultPackagingArgs };

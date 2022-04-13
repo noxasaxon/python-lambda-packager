@@ -57,12 +57,13 @@ var PackagingCmdArgs = {
     commonDir: option({
         type: optional(string),
         long: 'common',
+        short: 'c',
         description: 'common shared code directory path'
     }),
     outputDir: option({
         type: __assign(__assign({}, string), { defaultValue: function () { return defaultPackagingArgs.outputDir; }, defaultValueIsSerializable: true }),
         long: 'output',
-        short: 'u',
+        short: 'o',
         description: 'output directory for archive files'
     }),
     useDocker: option({
@@ -83,14 +84,13 @@ var myCmd = command({
     name: 'lambda-packager',
     args: PackagingCmdArgs,
     handler: function (args) {
-        // do stuff with args
-        var allArgNames = Object.keys(args);
-        allArgNames.forEach(function (argName) {
-            console.log(argName, args[argName]);
-        });
+        if (args.useDocker === true) {
+            args.useDocker = 'true';
+        }
+        else if (args.useDocker === false) {
+            args.useDocker = 'false';
+        }
         makePackages(args);
-        // console.log(args);
-        // console.log(args.functionsDir);
     }
 });
 function main() {

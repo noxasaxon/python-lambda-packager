@@ -1,2 +1,2 @@
-import { makePackages, useDockerOptions, PackagingArgs, defaultPackagingArgs } from './internal.js';
-export { makePackages, useDockerOptions, PackagingArgs, defaultPackagingArgs };
+import { makePackages, useDockerOption, PackagingArgs, defaultPackagingArgs } from './internal.js';
+export { makePackages, useDockerOption, PackagingArgs, defaultPackagingArgs };
