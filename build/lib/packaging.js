@@ -189,13 +189,6 @@ export function makePackages(args) {
                                     ], pipDockerCmds, true);
                                     return [4 /*yield*/, spawnDockerCmd(dockerCmds)];
                                 case 1:
-                                    // childProcessInstallReqs = spawn('pip', [
-                                    //   'install',
-                                    //   '-r',
-                                    //   moduleArchiveDirPath + '/requirements.txt',
-                                    //   '-t',
-                                    //   moduleArchiveDirPath,
-                                    // ]);
                                     childProcessInstallReqs = _b.sent();
                                     return [3 /*break*/, 3];
                                 case 2:

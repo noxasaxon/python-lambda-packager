@@ -199,10 +199,9 @@ export async function makePackages(args: PackagingArgs) {
         '/var/task/requirements.txt',
       ];
 
-      // if custom image
+      // ! if custom image
       // buildImage(customDockerfile)
       // const imageName = CUSTOM_IMAGE_NAME
-
       // path.join(process.cwd(), moduleArchiveDirPath);
 
       const dockerCmds = [
@@ -216,23 +215,7 @@ export async function makePackages(args: PackagingArgs) {
         ...pipDockerCmds,
       ];
 
-      // childProcessInstallReqs = spawn('pip', [
-      //   'install',
-      //   '-r',
-      //   moduleArchiveDirPath + '/requirements.txt',
-      //   '-t',
-      //   moduleArchiveDirPath,
-      // ]);
-
       childProcessInstallReqs = await spawnDockerCmd(dockerCmds);
-
-      // childProcessInstallReqs = spawn('pip', [
-      //   'install',
-      //   '-r',
-      //   moduleArchiveDirPath + '/requirements.txt',
-      //   '-t',
-      //   moduleArchiveDirPath,
-      // ]);
     } else {
       console.log('NOT USING DOCKER');
       // not using docker
