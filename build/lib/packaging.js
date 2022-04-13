@@ -60,6 +60,7 @@ import { customCopyDirSync, ensureDirSync, DEFAULT_FUNCTIONS_DIR_NAME, DEFAULT_O
 import { spawn } from 'child_process';
 import { DEFAULT_DOCKER_IMAGE } from './constants.js';
 import { spawnDockerCmd } from './docker.js';
+import * as path from 'path';
 export var defaultPackagingArgs = {
     functionsDir: DEFAULT_FUNCTIONS_DIR_NAME,
     outputDir: DEFAULT_OUTPUT_DIR_NAME,
@@ -166,6 +167,7 @@ export function makePackages(args) {
                                     // write the combined requirements file over the existing one
                                     writeFileSync(combinedRequirementsFilePath, combinedRequirementsFileContentsString, { encoding: 'utf8', flag: 'w' });
                                     if (!shouldUseDocker(useDocker)) return [3 /*break*/, 2];
+                                    console.log('USING DOCKER');
                                     pipDockerCmds = [
                                         'python',
                                         '-m',
@@ -182,7 +184,7 @@ export function makePackages(args) {
                                         '--rm',
                                         '-v',
                                         // `${bindPath}:/var/task:z`,
-                                        "".concat(moduleArchiveDirPath, ":/var/task:z"),
+                                        "".concat(path.join(process.cwd(), moduleArchiveDirPath), ":/var/task:z"),
                                         DEFAULT_DOCKER_IMAGE
                                     ], pipDockerCmds, true);
                                     return [4 /*yield*/, spawnDockerCmd(dockerCmds)];
@@ -197,6 +199,7 @@ export function makePackages(args) {
                                     childProcessInstallReqs = _b.sent();
                                     return [3 /*break*/, 3];
                                 case 2:
+                                    console.log('NOT USING DOCKER');
                                     // not using docker
                                     childProcessInstallReqs = spawn('pip', [
                                         'install',
@@ -212,15 +215,18 @@ export function makePackages(args) {
                                         console.log("".concat(data));
                                     });
                                     childProcessInstallReqs.stderr.on('data', function (data) {
-                                        if (data.toString().includes('command not found')) {
+                                        var dataAsString = data.toString();
+                                        if (dataAsString.includes('command not found')) {
                                             throw new Error('docker not found! Please install it.');
                                         }
-                                        else if (data.toString().includes('Cannot connect to the Docker daemon')) {
+                                        else if (dataAsString.includes('Cannot connect to the Docker daemon')) {
                                             throw new Error('Docker daemon not running! Please start it.');
                                         }
+                                        else if (dataAsString.includes('WARNING: You are using pip version')) {
+                                            // do nothing
+                                        }
                                         else {
-                                            console.error("".concat(data));
-                                            throw new Error(data);
+                                            console.error(dataAsString);
                                         }
                                     });
                                     return [4 /*yield*/, new Promise(function (resolve, reject) {

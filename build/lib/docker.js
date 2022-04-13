@@ -35,7 +35,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 import { spawn, } from 'child_process';
-import { CUSTOM_DOCKERFILE_IMAGE_NAME } from './constants';
+import { CUSTOM_DOCKERFILE_IMAGE_NAME } from './internal.js';
 export function spawnDockerCmd(args) {
     return __awaiter(this, void 0, void 0, function () {
         var e_1;

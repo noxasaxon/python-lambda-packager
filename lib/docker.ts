@@ -5,7 +5,7 @@ import {
 } from 'child_process';
 import { readFileSync, statSync } from 'fs';
 import * as os from 'os';
-import { CUSTOM_DOCKERFILE_IMAGE_NAME } from './constants';
+import { CUSTOM_DOCKERFILE_IMAGE_NAME } from './internal.js';
 
 export async function spawnDockerCmd(
   args: string[],

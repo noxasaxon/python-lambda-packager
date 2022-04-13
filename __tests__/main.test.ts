@@ -18,6 +18,7 @@ describe('makePackages', () => {
     );
     pkgArgs.commonDir = path.join(MOCK_REPO_PATH, 'common');
     pkgArgs.outputDir = path.join(TESTING_ARTIFACTS_PATH, '.archives');
+    pkgArgs.useDocker = 'false';
 
     // run function
     await makePackages(pkgArgs);

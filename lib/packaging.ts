@@ -20,6 +20,7 @@ import {
 import { spawn } from 'child_process';
 import { DEFAULT_DOCKER_IMAGE } from './constants.js';
 import { spawnDockerCmd } from './docker.js';
+import * as path from 'path';
 
 export type useDockerOption = 'no-linux' | 'true' | 'false';
 export type languageOption = 'python' | 'ts' | 'js';
@@ -185,6 +186,7 @@ export async function makePackages(args: PackagingArgs) {
     let childProcessInstallReqs;
 
     if (shouldUseDocker(useDocker)) {
+      console.log('USING DOCKER');
       // installation of reqs inside docker
       const pipDockerCmds = [
         'python',
@@ -201,13 +203,15 @@ export async function makePackages(args: PackagingArgs) {
       // buildImage(customDockerfile)
       // const imageName = CUSTOM_IMAGE_NAME
 
+      // path.join(process.cwd(), moduleArchiveDirPath);
+
       const dockerCmds = [
         // 'docker',
         'run',
         '--rm',
         '-v',
         // `${bindPath}:/var/task:z`,
-        `${moduleArchiveDirPath}:/var/task:z`,
+        `${path.join(process.cwd(), moduleArchiveDirPath)}:/var/task:z`,
         DEFAULT_DOCKER_IMAGE,
         ...pipDockerCmds,
       ];
@@ -230,6 +234,7 @@ export async function makePackages(args: PackagingArgs) {
       //   moduleArchiveDirPath,
       // ]);
     } else {
+      console.log('NOT USING DOCKER');
       // not using docker
       childProcessInstallReqs = spawn('pip', [
         'install',
@@ -245,16 +250,17 @@ export async function makePackages(args: PackagingArgs) {
     childProcessInstallReqs.stdout.on('data', (data) => {
       console.log(`${data}`);
     });
+
     childProcessInstallReqs.stderr.on('data', (data) => {
-      if (data.toString().includes('command not found')) {
+      const dataAsString = data.toString();
+      if (dataAsString.includes('command not found')) {
         throw new Error('docker not found! Please install it.');
-      } else if (
-        data.toString().includes('Cannot connect to the Docker daemon')
-      ) {
+      } else if (dataAsString.includes('Cannot connect to the Docker daemon')) {
         throw new Error('Docker daemon not running! Please start it.');
+      } else if (dataAsString.includes('WARNING: You are using pip version')) {
+        // do nothing
       } else {
-        console.error(`${data}`);
-        throw new Error(data);
+        console.error(dataAsString);
       }
     });
 
