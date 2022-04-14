@@ -139,12 +139,16 @@ export async function makePackages(args: PackagingArgs) {
     }
   }
 
+  const downloadCacheDir = getDownloadCacheDir();
+  ensureDirSync(downloadCacheDir);
+
   // for each lambda function, copy the lambda code plus common code to it's own archive folder
   // then use a checksum of the combined requirements file to see if we have an existing cache of dependencies
   // if cache not found, download new dependencies (possibly via Docker)
   // then save dependencies to cache and copy to lambda's archive folder
   for (const functionDir of functionDirs) {
     const moduleName = functionDir.name;
+    process.stdout.write(`Packaging ${moduleName}...\n`);
 
     const moduleCodeDirPath = path.join(functionsDir, moduleName);
     const moduleArchiveDirPath = path.join(outputDir, moduleName);
@@ -166,7 +170,9 @@ export async function makePackages(args: PackagingArgs) {
 
     const fnRequirementsQuery = getUTF8File(functionRequirementsFilePath);
     if (fnRequirementsQuery.isErr()) {
-      console.log(`No requirements file found in ${moduleCodeDirPath}`);
+      process.stdout.write(
+        `No requirements file found in ${moduleCodeDirPath}\n`,
+      );
     } else {
       fnRequirementsContents = fnRequirementsQuery.value.trim();
     }
@@ -183,7 +189,6 @@ export async function makePackages(args: PackagingArgs) {
     const filteredCombinedRequirements = filterRequirements(
       `${commonRequirementsContents}\n${fnRequirementsContents}`,
     );
-    console.log(filteredCombinedRequirements);
 
     writeFileSync(
       path.join(moduleArchiveDirPath, 'requirements.txt'),
@@ -204,6 +209,7 @@ export async function makePackages(args: PackagingArgs) {
       existsSync(path.join(reqsStaticCacheFolder, '.completed_requirements'))
     ) {
       // static cache exists, copy over the dependencies and skip downloading
+      process.stdout.write(`Copying cached dependencies...\n`);
       customCopyDirSync(reqsStaticCacheFolder, moduleArchiveDirPath);
       continue;
     } else {
@@ -221,7 +227,7 @@ export async function makePackages(args: PackagingArgs) {
     let childProcessInstallReqs: ChildProcessWithoutNullStreams;
 
     if (shouldUseDocker(useDocker)) {
-      console.log('USING DOCKER');
+      process.stdout.write('USING DOCKER\n');
       // installation of reqs inside docker
       const pipDockerCmds = [
         'python',
@@ -233,7 +239,7 @@ export async function makePackages(args: PackagingArgs) {
         '-r',
         '/var/task/requirements.txt',
         '--cache-dir',
-        getDownloadCacheDir(),
+        '/var/useDownloadCache',
       ];
 
       // ! if custom image
@@ -245,15 +251,16 @@ export async function makePackages(args: PackagingArgs) {
         'run',
         '--rm',
         '-v',
-        // `${path.join(process.cwd(), reqsStaticCacheFolder)}:/var/task:z`,
         `${reqsStaticCacheFolder}:/var/task:z`,
+        '-v',
+        `${downloadCacheDir}:/var/useDownloadCache:z`,
         DEFAULT_DOCKER_IMAGE,
         ...pipDockerCmds,
       ];
 
       childProcessInstallReqs = await spawnDockerCmd(dockerCmds);
     } else {
-      console.log('NOT USING DOCKER');
+      process.stdout.write('NOT USING DOCKER\n');
       // not using docker
       childProcessInstallReqs = spawn('pip', [
         'install',
@@ -262,14 +269,13 @@ export async function makePackages(args: PackagingArgs) {
         '-t',
         reqsStaticCacheFolder,
         '--cache-dir',
-        getDownloadCacheDir(),
+        downloadCacheDir,
       ]);
     }
 
     const exitCode = await attachLogHandlersAndGetExitCode(
       childProcessInstallReqs,
     );
-    console.log('exitCode', exitCode);
     if (exitCode) {
       throw new Error(`subprocess error exit ${exitCode}`);
     } else {
@@ -325,7 +331,7 @@ async function attachLogHandlersAndGetExitCode(
   // ): ChildProcessWithoutNullStreams {
 ): Promise<unknown> {
   childProcess.stdout.on('data', (data) => {
-    console.log(`${data}`);
+    process.stdout.write(`${data}`);
   });
 
   childProcess.stderr.on('data', (data) => {

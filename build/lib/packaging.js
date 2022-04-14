@@ -116,7 +116,7 @@ function checkArgErrors(args) {
 }
 export function makePackages(args) {
     return __awaiter(this, void 0, void 0, function () {
-        var argsPlusDefaults, errors, functionsDir, commonDir, outputDir, useDocker, language, functionDirs, commonRequirementsContents, commonRequirementsFilePath, commonRequirementsFileQuery, _i, functionDirs_1, functionDir, moduleName, moduleCodeDirPath, moduleArchiveDirPath, functionRequirementsFilePath, fnRequirementsContents, fnRequirementsQuery, filteredCombinedRequirements, reqsChecksum, reqsStaticCacheFolder, childProcessInstallReqs, pipDockerCmds, dockerCmds, exitCode;
+        var argsPlusDefaults, errors, functionsDir, commonDir, outputDir, useDocker, language, functionDirs, commonRequirementsContents, commonRequirementsFilePath, commonRequirementsFileQuery, downloadCacheDir, _i, functionDirs_1, functionDir, moduleName, moduleCodeDirPath, moduleArchiveDirPath, functionRequirementsFilePath, fnRequirementsContents, fnRequirementsQuery, filteredCombinedRequirements, reqsChecksum, reqsStaticCacheFolder, childProcessInstallReqs, pipDockerCmds, dockerCmds, exitCode;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -141,12 +141,15 @@ export function makePackages(args) {
                             commonRequirementsContents = commonRequirementsFileQuery.value.trim();
                         }
                     }
+                    downloadCacheDir = getDownloadCacheDir();
+                    ensureDirSync(downloadCacheDir);
                     _i = 0, functionDirs_1 = functionDirs;
                     _a.label = 1;
                 case 1:
                     if (!(_i < functionDirs_1.length)) return [3 /*break*/, 7];
                     functionDir = functionDirs_1[_i];
                     moduleName = functionDir.name;
+                    process.stdout.write("Packaging ".concat(moduleName, "...\n"));
                     moduleCodeDirPath = path.join(functionsDir, moduleName);
                     moduleArchiveDirPath = path.join(outputDir, moduleName);
                     // delete and re-make the function's archive folder to ensure stale code is removed
@@ -158,7 +161,7 @@ export function makePackages(args) {
                     fnRequirementsContents = '';
                     fnRequirementsQuery = getUTF8File(functionRequirementsFilePath);
                     if (fnRequirementsQuery.isErr()) {
-                        console.log("No requirements file found in ".concat(moduleCodeDirPath));
+                        process.stdout.write("No requirements file found in ".concat(moduleCodeDirPath, "\n"));
                     }
                     else {
                         fnRequirementsContents = fnRequirementsQuery.value.trim();
@@ -170,13 +173,13 @@ export function makePackages(args) {
                         return [3 /*break*/, 6];
                     }
                     filteredCombinedRequirements = filterRequirements("".concat(commonRequirementsContents, "\n").concat(fnRequirementsContents));
-                    console.log(filteredCombinedRequirements);
                     writeFileSync(path.join(moduleArchiveDirPath, 'requirements.txt'), filteredCombinedRequirements, { encoding: 'utf8', flag: 'w' });
                     reqsChecksum = CRC32.str(filteredCombinedRequirements);
                     reqsStaticCacheFolder = getRequirementsWorkingPath(reqsChecksum, 'x86_64');
                     if (existsSync(reqsStaticCacheFolder) &&
                         existsSync(path.join(reqsStaticCacheFolder, '.completed_requirements'))) {
                         // static cache exists, copy over the dependencies and skip downloading
+                        process.stdout.write("Copying cached dependencies...\n");
                         customCopyDirSync(reqsStaticCacheFolder, moduleArchiveDirPath);
                         return [3 /*break*/, 6];
                     }
@@ -189,7 +192,7 @@ export function makePackages(args) {
                     }
                     childProcessInstallReqs = void 0;
                     if (!shouldUseDocker(useDocker)) return [3 /*break*/, 3];
-                    console.log('USING DOCKER');
+                    process.stdout.write('USING DOCKER\n');
                     pipDockerCmds = [
                         'python',
                         '-m',
@@ -200,14 +203,15 @@ export function makePackages(args) {
                         '-r',
                         '/var/task/requirements.txt',
                         '--cache-dir',
-                        getDownloadCacheDir(),
+                        '/var/useDownloadCache',
                     ];
                     dockerCmds = __spreadArray([
                         'run',
                         '--rm',
                         '-v',
-                        // `${path.join(process.cwd(), reqsStaticCacheFolder)}:/var/task:z`,
                         "".concat(reqsStaticCacheFolder, ":/var/task:z"),
+                        '-v',
+                        "".concat(downloadCacheDir, ":/var/useDownloadCache:z"),
                         DEFAULT_DOCKER_IMAGE
                     ], pipDockerCmds, true);
                     return [4 /*yield*/, spawnDockerCmd(dockerCmds)];
@@ -215,7 +219,7 @@ export function makePackages(args) {
                     childProcessInstallReqs = _a.sent();
                     return [3 /*break*/, 4];
                 case 3:
-                    console.log('NOT USING DOCKER');
+                    process.stdout.write('NOT USING DOCKER\n');
                     // not using docker
                     childProcessInstallReqs = spawn('pip', [
                         'install',
@@ -224,13 +228,12 @@ export function makePackages(args) {
                         '-t',
                         reqsStaticCacheFolder,
                         '--cache-dir',
-                        getDownloadCacheDir(),
+                        downloadCacheDir,
                     ]);
                     _a.label = 4;
                 case 4: return [4 /*yield*/, attachLogHandlersAndGetExitCode(childProcessInstallReqs)];
                 case 5:
                     exitCode = _a.sent();
-                    console.log('exitCode', exitCode);
                     if (exitCode) {
                         throw new Error("subprocess error exit ".concat(exitCode));
                     }
@@ -281,7 +284,7 @@ function attachLogHandlersAndGetExitCode(childProcess) {
             switch (_a.label) {
                 case 0:
                     childProcess.stdout.on('data', function (data) {
-                        console.log("".concat(data));
+                        process.stdout.write("".concat(data));
                     });
                     childProcess.stderr.on('data', function (data) {
                         var dataAsString = data.toString();
