@@ -27,3 +27,17 @@ Provide a directory, and every (top-level) sub folder will be treated as a uniqu
 
 ### Determining Which Requirements To Include
 
+## Metrics
+local dev times with m1 max 64gb
+
+| Repo | Packager | Time | 🐳 | # of Functions |
+| ---- | ---- | ---- | --- | --- |
+| SOCless-core | CLI, no cache | 34s | | 14 |
+| SOCless-core | CLI, no cache | 4m51s | 🐳 | 14 |
+| SOCless-core | **CLI, static-cache (first run)** | **49s** | 🐳 | 14 |
+| SOCless-core | **CLI, static-cache (redeploy)**| **3s** | 🐳 | 14 |
+| SOCless-core | **CLI, static-cache (first run on linux)**| **9s** |  | 14 |
+| SOCless-core | Socless SLS Plugin  | 4m55s | 🐳 | 14 |
+- 6x faster for local dev first run  
+- 98x faster for local redeploys  
+- 40x (or more) faster in CICD
