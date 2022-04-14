@@ -18,7 +18,6 @@ export function customCopyDirSync(directory, destination) {
         var stat = statSync(source);
         if (stat.isDirectory()) {
             ensureDirSync(dest);
-            console.log('RECURSING!');
             customCopyDirSync(source, dest);
         }
         else {
