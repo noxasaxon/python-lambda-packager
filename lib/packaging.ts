@@ -2,11 +2,9 @@ import { Result, ok, err } from 'neverthrow';
 import {
   closeSync,
   existsSync,
-  fstat,
   mkdirSync,
   openSync,
   readdirSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from 'fs';
@@ -18,16 +16,15 @@ import {
   checkDirExists,
   getUTF8File,
   removeUndefinedValues,
-  buildImage,
 } from './internal.js';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { DEFAULT_DOCKER_IMAGE } from './constants.js';
 import { spawnDockerCmd } from './docker.js';
 import * as path from 'path';
-import * as AppDir from 'appdirectory';
-import * as CRC32 from 'crc-32';
-import { captureRejections } from 'events';
-import { exit } from 'process';
+// import * as AppDir from 'appdirectory'; // works in jest, not cli
+// import * as CRC32 from 'crc-32'; // works in jest, not cli
+import AppDir from 'appdirectory';
+import CRC32 from 'crc-32';
 
 export type useDockerOption = 'no-linux' | 'true' | 'false';
 export type languageOption = 'python' | 'ts' | 'js';
@@ -247,7 +244,8 @@ export async function makePackages(args: PackagingArgs) {
         'run',
         '--rm',
         '-v',
-        `${path.join(process.cwd(), reqsStaticCacheFolder)}:/var/task:z`,
+        // `${path.join(process.cwd(), reqsStaticCacheFolder)}:/var/task:z`,
+        `${reqsStaticCacheFolder}:/var/task:z`,
         DEFAULT_DOCKER_IMAGE,
         ...pipDockerCmds,
       ];

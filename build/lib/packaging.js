@@ -61,8 +61,10 @@ import { spawn } from 'child_process';
 import { DEFAULT_DOCKER_IMAGE } from './constants.js';
 import { spawnDockerCmd } from './docker.js';
 import * as path from 'path';
-import * as AppDir from 'appdirectory';
-import * as CRC32 from 'crc-32';
+// import * as AppDir from 'appdirectory'; // works in jest, not cli
+// import * as CRC32 from 'crc-32'; // works in jest, not cli
+import AppDir from 'appdirectory';
+import CRC32 from 'crc-32';
 export var defaultPackagingArgs = {
     functionsDir: DEFAULT_FUNCTIONS_DIR_NAME,
     outputDir: DEFAULT_OUTPUT_DIR_NAME,
@@ -203,7 +205,8 @@ export function makePackages(args) {
                         'run',
                         '--rm',
                         '-v',
-                        "".concat(path.join(process.cwd(), reqsStaticCacheFolder), ":/var/task:z"),
+                        // `${path.join(process.cwd(), reqsStaticCacheFolder)}:/var/task:z`,
+                        "".concat(reqsStaticCacheFolder, ":/var/task:z"),
                         DEFAULT_DOCKER_IMAGE
                     ], pipDockerCmds, true);
                     return [4 /*yield*/, spawnDockerCmd(dockerCmds)];
