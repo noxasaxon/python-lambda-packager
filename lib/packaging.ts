@@ -1,6 +1,7 @@
 import { Result, ok, err } from 'neverthrow';
 import {
   existsSync,
+  fstat,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -17,10 +18,13 @@ import {
   removeUndefinedValues,
   buildImage,
 } from './internal.js';
-import { spawn } from 'child_process';
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { DEFAULT_DOCKER_IMAGE } from './constants.js';
 import { spawnDockerCmd } from './docker.js';
 import * as path from 'path';
+import * as AppDir from 'appdirectory';
+import * as CRC32 from 'crc-32';
+import { captureRejections } from 'events';
 
 export type useDockerOption = 'no-linux' | 'true' | 'false';
 export type languageOption = 'python' | 'ts' | 'js';
@@ -169,9 +173,31 @@ export async function makePackages(args: PackagingArgs) {
     }
 
     // combine the requirements files
-    const combinedRequirementsFileContentsString = `${commonRequirementsContents}\n${fnRequirementsContents}`;
     const combinedRequirementsFilePath = `${moduleArchiveDirPath}/requirements.txt`;
-    console.log(combinedRequirementsFileContentsString);
+    const combinedRequirementsFileContentsString = `${commonRequirementsContents}\n${fnRequirementsContents}`;
+    const reqsChecksum = CRC32.str(combinedRequirementsFileContentsString);
+
+    const reqsWorkingFolder = getRequirementsWorkingPath(
+      reqsChecksum,
+      'x86_64',
+    );
+
+    if (existsSync(reqsWorkingFolder)) {
+      // static cache exists
+
+      // copy working requirements folder to archive dir and skip downloading
+      customCopyDirSync(reqsWorkingFolder, moduleArchiveDirPath);
+      continue;
+    } else {
+      // no static cache yet.
+      // create folder, copy combined requirements to it, install reqs
+      ensureDirSync(reqsWorkingFolder);
+      writeFileSync(
+        path.join(reqsWorkingFolder, 'requirements.txt'),
+        combinedRequirementsFileContentsString,
+        { encoding: 'utf8', flag: 'w' },
+      );
+    }
 
     // copy the common code to the archive directory
     customCopyDirSync(commonDir, moduleArchiveDirPath);
@@ -183,7 +209,7 @@ export async function makePackages(args: PackagingArgs) {
       { encoding: 'utf8', flag: 'w' },
     );
 
-    let childProcessInstallReqs;
+    let childProcessInstallReqs: ChildProcessWithoutNullStreams;
 
     if (shouldUseDocker(useDocker)) {
       console.log('USING DOCKER');
@@ -197,6 +223,8 @@ export async function makePackages(args: PackagingArgs) {
         '/var/task/',
         '-r',
         '/var/task/requirements.txt',
+        '--cache-dir',
+        getDownloadCacheDir(),
       ];
 
       // ! if custom image
@@ -210,7 +238,8 @@ export async function makePackages(args: PackagingArgs) {
         '--rm',
         '-v',
         // `${bindPath}:/var/task:z`,
-        `${path.join(process.cwd(), moduleArchiveDirPath)}:/var/task:z`,
+        // `${path.join(process.cwd(), moduleArchiveDirPath)}:/var/task:z`,
+        `${path.join(process.cwd(), reqsWorkingFolder)}:/var/task:z`,
         DEFAULT_DOCKER_IMAGE,
         ...pipDockerCmds,
       ];
@@ -222,30 +251,17 @@ export async function makePackages(args: PackagingArgs) {
       childProcessInstallReqs = spawn('pip', [
         'install',
         '-r',
-        moduleArchiveDirPath + '/requirements.txt',
+        // moduleArchiveDirPath + '/requirements.txt',
+        reqsWorkingFolder + '/requirements.txt',
         '-t',
-        moduleArchiveDirPath,
+        // moduleArchiveDirPath,
+        reqsWorkingFolder,
+        '--cache-dir',
+        getDownloadCacheDir(),
       ]);
     }
 
-    // install the requirements using spawn without docker
-
-    childProcessInstallReqs.stdout.on('data', (data) => {
-      console.log(`${data}`);
-    });
-
-    childProcessInstallReqs.stderr.on('data', (data) => {
-      const dataAsString = data.toString();
-      if (dataAsString.includes('command not found')) {
-        throw new Error('docker not found! Please install it.');
-      } else if (dataAsString.includes('Cannot connect to the Docker daemon')) {
-        throw new Error('Docker daemon not running! Please start it.');
-      } else if (dataAsString.includes('WARNING: You are using pip version')) {
-        // do nothing
-      } else {
-        console.error(dataAsString);
-      }
-    });
+    childProcessInstallReqs = attachLogHandlers(childProcessInstallReqs);
 
     const exitCode = await new Promise((resolve, reject) => {
       childProcessInstallReqs.on('close', resolve);
@@ -253,10 +269,52 @@ export async function makePackages(args: PackagingArgs) {
 
     if (exitCode) {
       throw new Error(`subprocess error exit ${exitCode}`);
+    } else {
+      // copy working requirements folder to archive dir
+      customCopyDirSync(reqsWorkingFolder, moduleArchiveDirPath);
     }
-
-    childProcessInstallReqs.on('close', (data) => {
-      console.log(`ALL DONE: ${data}`);
-    });
   }
+}
+
+// https://github.com/MrJohz/appdirectory
+function getUserCacheDir(): string {
+  const dirs = new AppDir({
+    appName: 'lambda-packager',
+    appAuthor: 'noxasaxon',
+  });
+
+  return dirs.userCache();
+}
+
+function getRequirementsWorkingPath(
+  reqsHash: number,
+  architecture: string,
+): string {
+  return path.join(getUserCacheDir(), `${reqsHash}_${architecture}_lambda_pkg`);
+}
+
+function getDownloadCacheDir(): string {
+  return path.join(getUserCacheDir(), 'downloadCacheLambdaPkg');
+}
+
+function attachLogHandlers(
+  childProcess: ChildProcessWithoutNullStreams,
+): ChildProcessWithoutNullStreams {
+  childProcess.stdout.on('data', (data) => {
+    console.log(`${data}`);
+  });
+
+  childProcess.stderr.on('data', (data) => {
+    const dataAsString = data.toString();
+    if (dataAsString.includes('command not found')) {
+      throw new Error('docker not found! Please install it.');
+    } else if (dataAsString.includes('Cannot connect to the Docker daemon')) {
+      throw new Error('Docker daemon not running! Please start it.');
+    } else if (dataAsString.includes('WARNING: You are using pip version')) {
+      // do nothing
+    } else {
+      console.error(dataAsString);
+    }
+  });
+  return childProcess;
 }
