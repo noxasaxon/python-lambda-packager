@@ -34,7 +34,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
-import { spawn, } from 'child_process';
+import { spawn } from 'child_process';
 import { CUSTOM_DOCKERFILE_IMAGE_NAME } from './internal.js';
 export function spawnDockerCmd(args) {
     return __awaiter(this, void 0, void 0, function () {
@@ -47,7 +47,6 @@ export function spawnDockerCmd(args) {
                 case 1: return [2 /*return*/, _a.sent()];
                 case 2:
                     e_1 = _a.sent();
-                    console.log('WE CAUGHT AN ERROR');
                     if (e_1.stderrBuffer &&
                         e_1.stderrBuffer.toString().includes('command not found')) {
                         throw new Error('docker not found! Please install it.');

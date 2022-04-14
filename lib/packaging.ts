@@ -370,9 +370,9 @@ function filterRequirements(source: string): string {
       req = req.trim();
       return [...acc, req];
       //! not supporting nested requirements files (-r in a requirements.txt) right now
-      if (!req.startsWith('-r')) {
-        return [...acc, req];
-      }
+      // if (!req.startsWith('-r')) {
+      //   return [...acc, req];
+      // }
       // source = path.join(path.dirname(source), req.replace(/^-r\s+/, ''));
       // return [...acc, ...getRequirements(source)];
     }, []);

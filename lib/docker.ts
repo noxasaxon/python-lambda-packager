@@ -1,10 +1,4 @@
-import {
-  ChildProcessWithoutNullStreams,
-  spawn,
-  SpawnOptionsWithoutStdio,
-} from 'child_process';
-import { readFileSync, statSync } from 'fs';
-import * as os from 'os';
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { CUSTOM_DOCKERFILE_IMAGE_NAME } from './internal.js';
 
 export async function spawnDockerCmd(
@@ -13,8 +7,6 @@ export async function spawnDockerCmd(
   try {
     return await spawn('docker', args);
   } catch (e) {
-    console.log('WE CAUGHT AN ERROR');
-
     if (
       e.stderrBuffer &&
       e.stderrBuffer.toString().includes('command not found')

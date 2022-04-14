@@ -25,7 +25,7 @@ const getStripMode = (
   }
 };
 
-const getStripCommand = (options, folderPath) => [
+const getStripCommand = (folderPath) => [
   'find',
   folderPath,
   '-name',

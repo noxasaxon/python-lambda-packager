@@ -6,7 +6,6 @@ import {
   readdirSync,
   statSync,
   readFileSync,
-  rmSync,
 } from 'fs';
 import { err, ok, Result } from 'neverthrow';
 

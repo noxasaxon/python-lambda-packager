@@ -82,7 +82,6 @@ const myCmd = command({
 });
 
 async function main() {
-  console.log(process.argv);
   await run(myCmd, process.argv.slice(2));
 }
 

@@ -19,7 +19,7 @@ var getStripMode = function (stripOption, slimOption, dockerizePip) {
         return 'direct';
     }
 };
-var getStripCommand = function (options, folderPath) { return [
+var getStripCommand = function (folderPath) { return [
     'find',
     folderPath,
     '-name',
