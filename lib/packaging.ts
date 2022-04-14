@@ -25,6 +25,7 @@ import * as path from 'path';
 // import * as CRC32 from 'crc-32'; // works in jest, not cli
 import AppDir from 'appdirectory';
 import CRC32 from 'crc-32';
+import { zip } from 'zip-a-folder';
 
 export type useDockerOption = 'no-linux' | 'true' | 'false';
 export type languageOption = 'python' | 'ts' | 'js';
@@ -284,6 +285,18 @@ export async function makePackages(args: PackagingArgs) {
       customCopyDirSync(reqsStaticCacheFolder, moduleArchiveDirPath);
     }
   }
+
+  // zip lambda functions into archive files
+  await Promise.all(
+    functionDirs.map((functionDir) => {
+      const moduleArchiveDirPath = path.join(outputDir, functionDir.name);
+      const zipFileName = `${functionDir.name}.zip`;
+
+      const zipFilePath = path.join(outputDir, zipFileName);
+
+      return zip(moduleArchiveDirPath, zipFilePath);
+    }),
+  );
 }
 
 // https://github.com/MrJohz/appdirectory

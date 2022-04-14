@@ -65,6 +65,7 @@ import * as path from 'path';
 // import * as CRC32 from 'crc-32'; // works in jest, not cli
 import AppDir from 'appdirectory';
 import CRC32 from 'crc-32';
+import { zip } from 'zip-a-folder';
 export var defaultPackagingArgs = {
     functionsDir: DEFAULT_FUNCTIONS_DIR_NAME,
     outputDir: DEFAULT_OUTPUT_DIR_NAME,
@@ -243,7 +244,18 @@ export function makePackages(args) {
                 case 6:
                     _i++;
                     return [3 /*break*/, 1];
-                case 7: return [2 /*return*/];
+                case 7: 
+                // zip lambda functions into archive files
+                return [4 /*yield*/, Promise.all(functionDirs.map(function (functionDir) {
+                        var moduleArchiveDirPath = path.join(outputDir, functionDir.name);
+                        var zipFileName = "".concat(functionDir.name, ".zip");
+                        var zipFilePath = path.join(outputDir, zipFileName);
+                        return zip(moduleArchiveDirPath, zipFilePath);
+                    }))];
+                case 8:
+                    // zip lambda functions into archive files
+                    _a.sent();
+                    return [2 /*return*/];
             }
         });
     });
