@@ -55,7 +55,7 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
     return to.concat(ar || Array.prototype.slice.call(from));
 };
 import { ok, err } from 'neverthrow';
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync, } from 'fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, rmSync, writeFileSync, } from 'fs';
 import { customCopyDirSync, ensureDirSync, DEFAULT_FUNCTIONS_DIR_NAME, DEFAULT_OUTPUT_DIR_NAME, checkDirExists, getUTF8File, removeUndefinedValues, } from './internal.js';
 import { spawn } from 'child_process';
 import { DEFAULT_DOCKER_IMAGE } from './constants.js';
@@ -85,11 +85,11 @@ function shouldUseDocker(useDockerChoice) {
 function getRequirementsFilePath(functionDirPath, language) {
     switch (language) {
         case 'python':
-            return "".concat(functionDirPath, "/requirements.txt");
+            return path.join(functionDirPath, 'requirements.txt');
         case 'ts':
-            return "".concat(functionDirPath, "/package.json");
+            return path.join(functionDirPath, 'package.json');
         case 'js':
-            return "".concat(functionDirPath, "/package.json");
+            return path.join(functionDirPath, 'package.json');
         default:
             throw new Error("Unsupported language: ".concat(language));
     }
@@ -113,7 +113,7 @@ function checkArgErrors(args) {
 }
 export function makePackages(args) {
     return __awaiter(this, void 0, void 0, function () {
-        var argsPlusDefaults, errors, functionsDir, commonDir, outputDir, useDocker, language, functionDirs, commonRequirementsContents, commonRequirementsFilePath, commonRequirementsFileContents, _loop_1, _i, functionDirs_1, functionDir;
+        var argsPlusDefaults, errors, functionsDir, commonDir, outputDir, useDocker, language, functionDirs, commonRequirementsContents, commonRequirementsFilePath, commonRequirementsFileQuery, _i, functionDirs_1, functionDir, moduleName, moduleCodeDirPath, moduleArchiveDirPath, functionRequirementsFilePath, fnRequirementsContents, fnRequirementsQuery, filteredCombinedRequirements, reqsChecksum, reqsStaticCacheFolder, childProcessInstallReqs, pipDockerCmds, dockerCmds, exitCode;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -130,131 +130,117 @@ export function makePackages(args) {
                     // copy the common code to the archive directory
                     if (commonDir !== undefined) {
                         commonRequirementsFilePath = getRequirementsFilePath(commonDir, language);
-                        commonRequirementsFileContents = getUTF8File(commonRequirementsFilePath);
-                        if (commonRequirementsFileContents.isErr()) {
-                            console.log("No common requirements file found in ".concat(commonRequirementsFilePath));
-                            throw new Error("Error reading common requirements file: ".concat(commonRequirementsFileContents.error));
+                        commonRequirementsFileQuery = getUTF8File(commonRequirementsFilePath);
+                        if (commonRequirementsFileQuery.isErr()) {
+                            throw new Error("No common requirements file found in ".concat(commonRequirementsFilePath, ", Error reading common requirements file: ").concat(commonRequirementsFileQuery.error));
                         }
                         else {
-                            commonRequirementsContents = commonRequirementsFileContents.value;
+                            commonRequirementsContents = commonRequirementsFileQuery.value.trim();
                         }
                     }
-                    _loop_1 = function (functionDir) {
-                        var moduleName, moduleCodeDirPath, moduleArchiveDirPath, functionRequirementsFilePath, fnRequirementsContents, fnRequirementsQuery, combinedRequirementsFilePath, combinedRequirementsFileContentsString, reqsChecksum, reqsWorkingFolder, childProcessInstallReqs, pipDockerCmds, dockerCmds, exitCode;
-                        return __generator(this, function (_b) {
-                            switch (_b.label) {
-                                case 0:
-                                    moduleName = functionDir.name;
-                                    moduleCodeDirPath = "".concat(functionsDir, "/").concat(moduleName);
-                                    moduleArchiveDirPath = "".concat(outputDir, "/").concat(moduleName);
-                                    // delete and re-make the archive directory
-                                    rmSync(moduleArchiveDirPath, { recursive: true, force: true });
-                                    mkdirSync(moduleArchiveDirPath, { recursive: true });
-                                    // copy the function code to the archive directory
-                                    customCopyDirSync(moduleCodeDirPath, moduleArchiveDirPath);
-                                    functionRequirementsFilePath = getRequirementsFilePath(moduleCodeDirPath, language);
-                                    fnRequirementsContents = '';
-                                    fnRequirementsQuery = getUTF8File(functionRequirementsFilePath);
-                                    if (fnRequirementsQuery.isErr()) {
-                                        console.log("No requirements file found in ".concat(moduleCodeDirPath));
-                                    }
-                                    else {
-                                        fnRequirementsContents = fnRequirementsQuery.value;
-                                    }
-                                    combinedRequirementsFilePath = "".concat(moduleArchiveDirPath, "/requirements.txt");
-                                    combinedRequirementsFileContentsString = "".concat(commonRequirementsContents, "\n").concat(fnRequirementsContents);
-                                    reqsChecksum = CRC32.str(combinedRequirementsFileContentsString);
-                                    reqsWorkingFolder = getRequirementsWorkingPath(reqsChecksum, 'x86_64');
-                                    if (existsSync(reqsWorkingFolder)) {
-                                        // static cache exists
-                                        // copy working requirements folder to archive dir and skip downloading
-                                        customCopyDirSync(reqsWorkingFolder, moduleArchiveDirPath);
-                                        return [2 /*return*/, "continue"];
-                                    }
-                                    else {
-                                        // no static cache yet.
-                                        // create folder, copy combined requirements to it, install reqs
-                                        ensureDirSync(reqsWorkingFolder);
-                                        writeFileSync(path.join(reqsWorkingFolder, 'requirements.txt'), combinedRequirementsFileContentsString, { encoding: 'utf8', flag: 'w' });
-                                    }
-                                    // copy the common code to the archive directory
-                                    customCopyDirSync(commonDir, moduleArchiveDirPath);
-                                    // write the combined requirements file over the existing one
-                                    writeFileSync(combinedRequirementsFilePath, combinedRequirementsFileContentsString, { encoding: 'utf8', flag: 'w' });
-                                    if (!shouldUseDocker(useDocker)) return [3 /*break*/, 2];
-                                    console.log('USING DOCKER');
-                                    pipDockerCmds = [
-                                        'python',
-                                        '-m',
-                                        'pip',
-                                        'install',
-                                        '-t',
-                                        '/var/task/',
-                                        '-r',
-                                        '/var/task/requirements.txt',
-                                        '--cache-dir',
-                                        getDownloadCacheDir(),
-                                    ];
-                                    dockerCmds = __spreadArray([
-                                        // 'docker',
-                                        'run',
-                                        '--rm',
-                                        '-v',
-                                        // `${bindPath}:/var/task:z`,
-                                        // `${path.join(process.cwd(), moduleArchiveDirPath)}:/var/task:z`,
-                                        "".concat(path.join(process.cwd(), reqsWorkingFolder), ":/var/task:z"),
-                                        DEFAULT_DOCKER_IMAGE
-                                    ], pipDockerCmds, true);
-                                    return [4 /*yield*/, spawnDockerCmd(dockerCmds)];
-                                case 1:
-                                    childProcessInstallReqs = _b.sent();
-                                    return [3 /*break*/, 3];
-                                case 2:
-                                    console.log('NOT USING DOCKER');
-                                    // not using docker
-                                    childProcessInstallReqs = spawn('pip', [
-                                        'install',
-                                        '-r',
-                                        // moduleArchiveDirPath + '/requirements.txt',
-                                        reqsWorkingFolder + '/requirements.txt',
-                                        '-t',
-                                        // moduleArchiveDirPath,
-                                        reqsWorkingFolder,
-                                        '--cache-dir',
-                                        getDownloadCacheDir(),
-                                    ]);
-                                    _b.label = 3;
-                                case 3:
-                                    childProcessInstallReqs = attachLogHandlers(childProcessInstallReqs);
-                                    return [4 /*yield*/, new Promise(function (resolve, reject) {
-                                            childProcessInstallReqs.on('close', resolve);
-                                        })];
-                                case 4:
-                                    exitCode = _b.sent();
-                                    if (exitCode) {
-                                        throw new Error("subprocess error exit ".concat(exitCode));
-                                    }
-                                    else {
-                                        // copy working requirements folder to archive dir
-                                        customCopyDirSync(reqsWorkingFolder, moduleArchiveDirPath);
-                                    }
-                                    return [2 /*return*/];
-                            }
-                        });
-                    };
                     _i = 0, functionDirs_1 = functionDirs;
                     _a.label = 1;
                 case 1:
-                    if (!(_i < functionDirs_1.length)) return [3 /*break*/, 4];
+                    if (!(_i < functionDirs_1.length)) return [3 /*break*/, 7];
                     functionDir = functionDirs_1[_i];
-                    return [5 /*yield**/, _loop_1(functionDir)];
+                    moduleName = functionDir.name;
+                    moduleCodeDirPath = path.join(functionsDir, moduleName);
+                    moduleArchiveDirPath = path.join(outputDir, moduleName);
+                    // delete and re-make the function's archive folder to ensure stale code is removed
+                    rmSync(moduleArchiveDirPath, { recursive: true, force: true });
+                    mkdirSync(moduleArchiveDirPath, { recursive: true });
+                    // copy the function code to the archive directory
+                    customCopyDirSync(moduleCodeDirPath, moduleArchiveDirPath);
+                    functionRequirementsFilePath = getRequirementsFilePath(moduleCodeDirPath, language);
+                    fnRequirementsContents = '';
+                    fnRequirementsQuery = getUTF8File(functionRequirementsFilePath);
+                    if (fnRequirementsQuery.isErr()) {
+                        console.log("No requirements file found in ".concat(moduleCodeDirPath));
+                    }
+                    else {
+                        fnRequirementsContents = fnRequirementsQuery.value.trim();
+                    }
+                    // copy the common code to the archive directory (which can wipe the existing requirements.txt)
+                    customCopyDirSync(commonDir, moduleArchiveDirPath);
+                    // if no requirements contents, continue to next lambda function
+                    if (fnRequirementsContents === '' && commonRequirementsContents === '') {
+                        return [3 /*break*/, 6];
+                    }
+                    filteredCombinedRequirements = filterRequirements("".concat(commonRequirementsContents, "\n").concat(fnRequirementsContents));
+                    console.log(filteredCombinedRequirements);
+                    writeFileSync(path.join(moduleArchiveDirPath, 'requirements.txt'), filteredCombinedRequirements, { encoding: 'utf8', flag: 'w' });
+                    reqsChecksum = CRC32.str(filteredCombinedRequirements);
+                    reqsStaticCacheFolder = getRequirementsWorkingPath(reqsChecksum, 'x86_64');
+                    if (existsSync(reqsStaticCacheFolder) &&
+                        existsSync(path.join(reqsStaticCacheFolder, '.completed_requirements'))) {
+                        // static cache exists, copy over the dependencies and skip downloading
+                        customCopyDirSync(reqsStaticCacheFolder, moduleArchiveDirPath);
+                        return [3 /*break*/, 6];
+                    }
+                    else {
+                        // no static cache yet, or download was aborted without a .completed_requirements file
+                        rmSync(reqsStaticCacheFolder, { recursive: true, force: true });
+                        // create folder, copy combined requirements to it, install reqs
+                        ensureDirSync(reqsStaticCacheFolder);
+                        writeFileSync(path.join(reqsStaticCacheFolder, 'requirements.txt'), filteredCombinedRequirements, { encoding: 'utf8', flag: 'w' });
+                    }
+                    childProcessInstallReqs = void 0;
+                    if (!shouldUseDocker(useDocker)) return [3 /*break*/, 3];
+                    console.log('USING DOCKER');
+                    pipDockerCmds = [
+                        'python',
+                        '-m',
+                        'pip',
+                        'install',
+                        '-t',
+                        '/var/task/',
+                        '-r',
+                        '/var/task/requirements.txt',
+                        '--cache-dir',
+                        getDownloadCacheDir(),
+                    ];
+                    dockerCmds = __spreadArray([
+                        'run',
+                        '--rm',
+                        '-v',
+                        "".concat(path.join(process.cwd(), reqsStaticCacheFolder), ":/var/task:z"),
+                        DEFAULT_DOCKER_IMAGE
+                    ], pipDockerCmds, true);
+                    return [4 /*yield*/, spawnDockerCmd(dockerCmds)];
                 case 2:
-                    _a.sent();
-                    _a.label = 3;
+                    childProcessInstallReqs = _a.sent();
+                    return [3 /*break*/, 4];
                 case 3:
+                    console.log('NOT USING DOCKER');
+                    // not using docker
+                    childProcessInstallReqs = spawn('pip', [
+                        'install',
+                        '-r',
+                        path.join(reqsStaticCacheFolder, '/requirements.txt'),
+                        '-t',
+                        reqsStaticCacheFolder,
+                        '--cache-dir',
+                        getDownloadCacheDir(),
+                    ]);
+                    _a.label = 4;
+                case 4: return [4 /*yield*/, attachLogHandlersAndGetExitCode(childProcessInstallReqs)];
+                case 5:
+                    exitCode = _a.sent();
+                    console.log('exitCode', exitCode);
+                    if (exitCode) {
+                        throw new Error("subprocess error exit ".concat(exitCode));
+                    }
+                    else {
+                        // add file to indicate this cache was created successfully
+                        closeSync(openSync(path.join(reqsStaticCacheFolder, '.completed_requirements'), 'w'));
+                        // copy working requirements folder to archive dir
+                        customCopyDirSync(reqsStaticCacheFolder, moduleArchiveDirPath);
+                    }
+                    _a.label = 6;
+                case 6:
                     _i++;
                     return [3 /*break*/, 1];
-                case 4: return [2 /*return*/];
+                case 7: return [2 /*return*/];
             }
         });
     });
@@ -273,25 +259,99 @@ function getRequirementsWorkingPath(reqsHash, architecture) {
 function getDownloadCacheDir() {
     return path.join(getUserCacheDir(), 'downloadCacheLambdaPkg');
 }
-function attachLogHandlers(childProcess) {
-    childProcess.stdout.on('data', function (data) {
-        console.log("".concat(data));
+function attachLogHandlersAndGetExitCode(childProcess) {
+    return __awaiter(this, void 0, void 0, function () {
+        var exitCode;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    childProcess.stdout.on('data', function (data) {
+                        console.log("".concat(data));
+                    });
+                    childProcess.stderr.on('data', function (data) {
+                        var dataAsString = data.toString();
+                        if (dataAsString.includes('command not found')) {
+                            throw new Error('docker not found! Please install it.');
+                        }
+                        else if (dataAsString.includes('Cannot connect to the Docker daemon')) {
+                            throw new Error('Docker daemon not running! Please start it.');
+                        }
+                        else if (dataAsString.includes('WARNING: You are using pip version')) {
+                            // do nothing
+                        }
+                        else {
+                            console.error(dataAsString);
+                        }
+                    });
+                    return [4 /*yield*/, new Promise(function (resolve, reject) {
+                            childProcess.on('close', resolve);
+                        })];
+                case 1:
+                    exitCode = _a.sent();
+                    return [2 /*return*/, exitCode];
+            }
+        });
     });
-    childProcess.stderr.on('data', function (data) {
-        var dataAsString = data.toString();
-        if (dataAsString.includes('command not found')) {
-            throw new Error('docker not found! Please install it.');
+}
+/** create a filtered requirements.txt without anything from noDeploy
+ *  then remove all comments and empty lines, and sort the list which
+ *  assist with matching the static cache.  The sorting will skip any
+ *  lines starting with -- as those are typically ordered at the
+ *  start of a file ( eg: --index-url / --extra-index-url ) or any
+ *  lines that start with -c, -e, -f, -i or -r,  Please see:
+ * https://pip.pypa.io/en/stable/reference/pip_install/#requirements-file-format
+ */
+function filterRequirements(source) {
+    var requirements = source
+        .replace(/\\\n/g, ' ')
+        .split(/\r?\n/)
+        .reduce(function (acc, req) {
+        req = req.trim();
+        return __spreadArray(__spreadArray([], acc, true), [req], false);
+        //! not supporting nested requirements files (-r in a requirements.txt) right now
+        if (!req.startsWith('-r')) {
+            return __spreadArray(__spreadArray([], acc, true), [req], false);
         }
-        else if (dataAsString.includes('Cannot connect to the Docker daemon')) {
-            throw new Error('Docker daemon not running! Please start it.');
+        // source = path.join(path.dirname(source), req.replace(/^-r\s+/, ''));
+        // return [...acc, ...getRequirements(source)];
+    }, []);
+    var prepend = [];
+    var filteredRequirements = requirements.filter(function (req) {
+        req = req.trim();
+        if (req.startsWith('#')) {
+            // Skip comments
+            return false;
         }
-        else if (dataAsString.includes('WARNING: You are using pip version')) {
-            // do nothing
+        else if (req.startsWith('--') ||
+            req.startsWith('-c') ||
+            req.startsWith('-e') ||
+            req.startsWith('-f') ||
+            req.startsWith('-i') ||
+            req.startsWith('-r')) {
+            if (req.startsWith('-e')) {
+                // strip out editable flags
+                // not required inside final archive and avoids pip bugs
+                // see https://github.com/UnitedIncome/serverless-python-requirements/issues/240
+                req = req.split('-e')[1].trim();
+            }
+            // Keep options for later
+            prepend.push(req);
+            return false;
         }
-        else {
-            console.error(dataAsString);
+        else if (req === '') {
+            return false;
         }
+        // return !noDeploy.has(req.split(/[=<> \t]/)[0].trim());
+        return true;
     });
-    return childProcess;
+    filteredRequirements.sort(); // Sort remaining alphabetically
+    // Then prepend any options from above in the same order
+    for (var _i = 0, _a = prepend.reverse(); _i < _a.length; _i++) {
+        var item = _a[_i];
+        if (item && item.length > 0) {
+            filteredRequirements.unshift(item);
+        }
+    }
+    return filteredRequirements.join('\n') + '\n';
 }
 //# sourceMappingURL=packaging.js.map

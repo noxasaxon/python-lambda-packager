@@ -1,8 +1,10 @@
 import { Result, ok, err } from 'neverthrow';
 import {
+  closeSync,
   existsSync,
   fstat,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -25,6 +27,7 @@ import * as path from 'path';
 import * as AppDir from 'appdirectory';
 import * as CRC32 from 'crc-32';
 import { captureRejections } from 'events';
+import { exit } from 'process';
 
 export type useDockerOption = 'no-linux' | 'true' | 'false';
 export type languageOption = 'python' | 'ts' | 'js';
@@ -64,11 +67,11 @@ function getRequirementsFilePath(
 ): string {
   switch (language) {
     case 'python':
-      return `${functionDirPath}/requirements.txt`;
+      return path.join(functionDirPath, 'requirements.txt');
     case 'ts':
-      return `${functionDirPath}/package.json`;
+      return path.join(functionDirPath, 'package.json');
     case 'js':
-      return `${functionDirPath}/package.json`;
+      return path.join(functionDirPath, 'package.json');
     default:
       throw new Error(`Unsupported language: ${language}`);
   }
@@ -128,36 +131,34 @@ export async function makePackages(args: PackagingArgs) {
       language,
     );
 
-    const commonRequirementsFileContents = getUTF8File(
-      commonRequirementsFilePath,
-    );
-
-    if (commonRequirementsFileContents.isErr()) {
-      console.log(
-        `No common requirements file found in ${commonRequirementsFilePath}`,
-      );
+    const commonRequirementsFileQuery = getUTF8File(commonRequirementsFilePath);
+    if (commonRequirementsFileQuery.isErr()) {
       throw new Error(
-        `Error reading common requirements file: ${commonRequirementsFileContents.error}`,
+        `No common requirements file found in ${commonRequirementsFilePath}, Error reading common requirements file: ${commonRequirementsFileQuery.error}`,
       );
     } else {
-      commonRequirementsContents = commonRequirementsFileContents.value;
+      commonRequirementsContents = commonRequirementsFileQuery.value.trim();
     }
   }
 
+  // for each lambda function, copy the lambda code plus common code to it's own archive folder
+  // then use a checksum of the combined requirements file to see if we have an existing cache of dependencies
+  // if cache not found, download new dependencies (possibly via Docker)
+  // then save dependencies to cache and copy to lambda's archive folder
   for (const functionDir of functionDirs) {
     const moduleName = functionDir.name;
 
-    const moduleCodeDirPath = `${functionsDir}/${moduleName}`;
-    const moduleArchiveDirPath = `${outputDir}/${moduleName}`;
+    const moduleCodeDirPath = path.join(functionsDir, moduleName);
+    const moduleArchiveDirPath = path.join(outputDir, moduleName);
 
-    // delete and re-make the archive directory
+    // delete and re-make the function's archive folder to ensure stale code is removed
     rmSync(moduleArchiveDirPath, { recursive: true, force: true });
     mkdirSync(moduleArchiveDirPath, { recursive: true });
 
     // copy the function code to the archive directory
     customCopyDirSync(moduleCodeDirPath, moduleArchiveDirPath);
 
-    // get function requirements file path
+    // get function requirements file contents before it is overwritten by common requirements
     const functionRequirementsFilePath = getRequirementsFilePath(
       moduleCodeDirPath,
       language,
@@ -169,45 +170,55 @@ export async function makePackages(args: PackagingArgs) {
     if (fnRequirementsQuery.isErr()) {
       console.log(`No requirements file found in ${moduleCodeDirPath}`);
     } else {
-      fnRequirementsContents = fnRequirementsQuery.value;
+      fnRequirementsContents = fnRequirementsQuery.value.trim();
     }
 
-    // combine the requirements files
-    const combinedRequirementsFilePath = `${moduleArchiveDirPath}/requirements.txt`;
-    const combinedRequirementsFileContentsString = `${commonRequirementsContents}\n${fnRequirementsContents}`;
-    const reqsChecksum = CRC32.str(combinedRequirementsFileContentsString);
+    // copy the common code to the archive directory (which can wipe the existing requirements.txt)
+    customCopyDirSync(commonDir, moduleArchiveDirPath);
 
-    const reqsWorkingFolder = getRequirementsWorkingPath(
+    // if no requirements contents, continue to next lambda function
+    if (fnRequirementsContents === '' && commonRequirementsContents === '') {
+      continue;
+    }
+
+    // write the combined requirements file over the existing one
+    const filteredCombinedRequirements = filterRequirements(
+      `${commonRequirementsContents}\n${fnRequirementsContents}`,
+    );
+    console.log(filteredCombinedRequirements);
+
+    writeFileSync(
+      path.join(moduleArchiveDirPath, 'requirements.txt'),
+      filteredCombinedRequirements,
+      { encoding: 'utf8', flag: 'w' },
+    );
+
+    // combine the requirements files
+    const reqsChecksum = CRC32.str(filteredCombinedRequirements);
+
+    const reqsStaticCacheFolder = getRequirementsWorkingPath(
       reqsChecksum,
       'x86_64',
     );
 
-    if (existsSync(reqsWorkingFolder)) {
-      // static cache exists
-
-      // copy working requirements folder to archive dir and skip downloading
-      customCopyDirSync(reqsWorkingFolder, moduleArchiveDirPath);
+    if (
+      existsSync(reqsStaticCacheFolder) &&
+      existsSync(path.join(reqsStaticCacheFolder, '.completed_requirements'))
+    ) {
+      // static cache exists, copy over the dependencies and skip downloading
+      customCopyDirSync(reqsStaticCacheFolder, moduleArchiveDirPath);
       continue;
     } else {
-      // no static cache yet.
+      // no static cache yet, or download was aborted without a .completed_requirements file
+      rmSync(reqsStaticCacheFolder, { recursive: true, force: true });
       // create folder, copy combined requirements to it, install reqs
-      ensureDirSync(reqsWorkingFolder);
+      ensureDirSync(reqsStaticCacheFolder);
       writeFileSync(
-        path.join(reqsWorkingFolder, 'requirements.txt'),
-        combinedRequirementsFileContentsString,
+        path.join(reqsStaticCacheFolder, 'requirements.txt'),
+        filteredCombinedRequirements,
         { encoding: 'utf8', flag: 'w' },
       );
     }
-
-    // copy the common code to the archive directory
-    customCopyDirSync(commonDir, moduleArchiveDirPath);
-
-    // write the combined requirements file over the existing one
-    writeFileSync(
-      combinedRequirementsFilePath,
-      combinedRequirementsFileContentsString,
-      { encoding: 'utf8', flag: 'w' },
-    );
 
     let childProcessInstallReqs: ChildProcessWithoutNullStreams;
 
@@ -233,13 +244,10 @@ export async function makePackages(args: PackagingArgs) {
       // path.join(process.cwd(), moduleArchiveDirPath);
 
       const dockerCmds = [
-        // 'docker',
         'run',
         '--rm',
         '-v',
-        // `${bindPath}:/var/task:z`,
-        // `${path.join(process.cwd(), moduleArchiveDirPath)}:/var/task:z`,
-        `${path.join(process.cwd(), reqsWorkingFolder)}:/var/task:z`,
+        `${path.join(process.cwd(), reqsStaticCacheFolder)}:/var/task:z`,
         DEFAULT_DOCKER_IMAGE,
         ...pipDockerCmds,
       ];
@@ -251,27 +259,31 @@ export async function makePackages(args: PackagingArgs) {
       childProcessInstallReqs = spawn('pip', [
         'install',
         '-r',
-        // moduleArchiveDirPath + '/requirements.txt',
-        reqsWorkingFolder + '/requirements.txt',
+        path.join(reqsStaticCacheFolder, '/requirements.txt'),
         '-t',
-        // moduleArchiveDirPath,
-        reqsWorkingFolder,
+        reqsStaticCacheFolder,
         '--cache-dir',
         getDownloadCacheDir(),
       ]);
     }
 
-    childProcessInstallReqs = attachLogHandlers(childProcessInstallReqs);
-
-    const exitCode = await new Promise((resolve, reject) => {
-      childProcessInstallReqs.on('close', resolve);
-    });
-
+    const exitCode = await attachLogHandlersAndGetExitCode(
+      childProcessInstallReqs,
+    );
+    console.log('exitCode', exitCode);
     if (exitCode) {
       throw new Error(`subprocess error exit ${exitCode}`);
     } else {
+      // add file to indicate this cache was created successfully
+      closeSync(
+        openSync(
+          path.join(reqsStaticCacheFolder, '.completed_requirements'),
+          'w',
+        ),
+      );
+
       // copy working requirements folder to archive dir
-      customCopyDirSync(reqsWorkingFolder, moduleArchiveDirPath);
+      customCopyDirSync(reqsStaticCacheFolder, moduleArchiveDirPath);
     }
   }
 }
@@ -297,9 +309,10 @@ function getDownloadCacheDir(): string {
   return path.join(getUserCacheDir(), 'downloadCacheLambdaPkg');
 }
 
-function attachLogHandlers(
+async function attachLogHandlersAndGetExitCode(
   childProcess: ChildProcessWithoutNullStreams,
-): ChildProcessWithoutNullStreams {
+  // ): ChildProcessWithoutNullStreams {
+): Promise<unknown> {
   childProcess.stdout.on('data', (data) => {
     console.log(`${data}`);
   });
@@ -316,5 +329,75 @@ function attachLogHandlers(
       console.error(dataAsString);
     }
   });
-  return childProcess;
+
+  const exitCode = await new Promise((resolve, reject) => {
+    childProcess.on('close', resolve);
+  });
+
+  return exitCode;
+}
+
+/** create a filtered requirements.txt without anything from noDeploy
+ *  then remove all comments and empty lines, and sort the list which
+ *  assist with matching the static cache.  The sorting will skip any
+ *  lines starting with -- as those are typically ordered at the
+ *  start of a file ( eg: --index-url / --extra-index-url ) or any
+ *  lines that start with -c, -e, -f, -i or -r,  Please see:
+ * https://pip.pypa.io/en/stable/reference/pip_install/#requirements-file-format
+ */
+function filterRequirements(source: string): string {
+  const requirements = source
+    .replace(/\\\n/g, ' ')
+    .split(/\r?\n/)
+    .reduce((acc, req) => {
+      req = req.trim();
+      return [...acc, req];
+      //! not supporting nested requirements files (-r in a requirements.txt) right now
+      if (!req.startsWith('-r')) {
+        return [...acc, req];
+      }
+      // source = path.join(path.dirname(source), req.replace(/^-r\s+/, ''));
+      // return [...acc, ...getRequirements(source)];
+    }, []);
+
+  const prepend = [];
+  const filteredRequirements = requirements.filter((req) => {
+    req = req.trim();
+    if (req.startsWith('#')) {
+      // Skip comments
+      return false;
+    } else if (
+      req.startsWith('--') ||
+      req.startsWith('-c') ||
+      req.startsWith('-e') ||
+      req.startsWith('-f') ||
+      req.startsWith('-i') ||
+      req.startsWith('-r')
+    ) {
+      if (req.startsWith('-e')) {
+        // strip out editable flags
+        // not required inside final archive and avoids pip bugs
+        // see https://github.com/UnitedIncome/serverless-python-requirements/issues/240
+        req = req.split('-e')[1].trim();
+      }
+
+      // Keep options for later
+      prepend.push(req);
+      return false;
+    } else if (req === '') {
+      return false;
+    }
+    // return !noDeploy.has(req.split(/[=<> \t]/)[0].trim());
+    return true;
+  });
+
+  filteredRequirements.sort(); // Sort remaining alphabetically
+  // Then prepend any options from above in the same order
+  for (const item of prepend.reverse()) {
+    if (item && item.length > 0) {
+      filteredRequirements.unshift(item);
+    }
+  }
+
+  return filteredRequirements.join('\n') + '\n';
 }
